@@ -1,5 +1,6 @@
-// Songs screen: search (built-in, saved and online songs, plus a YouTube
-// link), saved songs, and "Add a song" from a MIDI file, audio, or typed notes.
+// Songs screen: search (built-in, saved and online songs, plus YouTube),
+// saved songs, and "Add a song" from a YouTube link, a MIDI file, audio, or
+// typed notes.
 
 import { h, toast, setChildren } from './dom.js';
 import { parseMidi } from '../song/midi.js';
@@ -11,7 +12,7 @@ import * as songs from '../song/songStore.js';
 import { getActiveProfile } from '../profile/store.js';
 import { keysFromProfile, searchTranspositions } from '../mapping/transpose.js';
 import { createAudioImport } from './audioImport.js';
-import { canCaptureTab } from '../audio/mic.js';
+import { parseYouTubeLink } from '../song/youtube.js';
 
 const EXAMPLE = 'C4 C4 G4 G4 A4 A4 G4/2 | F4 F4 E4 E4 D4 D4 C4/2';
 
@@ -28,7 +29,7 @@ export function songView(root, { navigate } = {}) {
     controller: null,
   };
   const state = {
-    mode: 'midi',          // 'midi' | 'text'
+    mode: 'youtube',       // 'youtube' | 'midi' | 'audio' | 'text'
     // MIDI
     fileName: '',
     parsed: null,          // parseMidi() result
@@ -45,7 +46,19 @@ export function songView(root, { navigate } = {}) {
   const searchEl = h('div', { class: 'card stack' });
   const listEl = h('div');
   const addEl = h('div', { class: 'card stack' });
+  const addTabs = h('div');
+  const addBody = h('div');
   const audioImport = createAudioImport({ save: (data) => save(data), navigate });
+  // Kept in the page (hidden on other tabs): its video would reload if moved.
+  const youtubeImport = createAudioImport({
+    save: (data) => save(data), navigate, youtube: true,
+    onSearch: (query) => {
+      searchInput.value = query;
+      runSearch(query);
+      searchEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+  });
+  addEl.append(h('h2', null, 'Add a song'), addTabs, youtubeImport.el, audioImport.el, addBody);
 
   // ---- song rows ----------------------------------------------------------
   function rowContext() {
@@ -62,7 +75,8 @@ export function songView(root, { navigate } = {}) {
     const st = noteStats(s.notes);
     const isActive = s.id === activeId;
     const deletable = s.source !== 'library';
-    const kind = s.source === 'midi' ? ' · MIDI' : s.source === 'text' ? ' · typed' : s.source === 'audio' ? ' · from audio' : '';
+    const kind = s.source === 'midi' ? ' · MIDI' : s.source === 'text' ? ' · typed'
+      : s.source === 'audio' ? (s.origin && s.origin.youtube ? ' · from YouTube' : ' · from audio') : '';
     // "fits 93%" for the active piano, at its best transposition.
     const fit = keys.length ? ` · fits your piano ${Math.round(searchTranspositions(notesForPiano(s.notes, profile), keys).best.fraction * 100)}%` : '';
     return h('li', { class: 'song-row' + (isActive ? ' active' : '') },
@@ -84,7 +98,7 @@ export function songView(root, { navigate } = {}) {
 
   // ---- search -------------------------------------------------------------
   const searchInput = h('input', {
-    type: 'search', id: 'song-search', placeholder: 'Song name, e.g. Jingle Bells', autocomplete: 'off', enterKeyHint: 'search',
+    type: 'search', id: 'song-search', placeholder: 'Song name or YouTube link', autocomplete: 'off', enterKeyHint: 'search',
   });
   const searchForm = h('form', {
     class: 'search-row', role: 'search',
@@ -93,6 +107,11 @@ export function songView(root, { navigate } = {}) {
 
   async function runSearch(text, page = 0) {
     const query = text.trim();
+    if (page === 0 && parseYouTubeLink(query)) { // a pasted YouTube link
+      searchInput.value = '';
+      openYouTube(query);
+      return;
+    }
     if (search.controller) search.controller.abort();
     if (page === 0) {
       search.query = query;
@@ -170,26 +189,27 @@ export function songView(root, { navigate } = {}) {
         'Online results are MIDI files shared by people on bitmidi.com, so quality varies. Open one, pick the track with the melody, and save it.'));
       parts.push(
         h('h3', null, 'On YouTube'),
-        h('p', { class: 'muted small' }, canCaptureTab()
-          ? 'No good MIDI file? Find the song on YouTube, play it in another tab, and the app writes down its notes.'
-          : 'No good MIDI file? Find the song on YouTube, play it out loud from another device, and the app writes down its notes from the microphone.'),
+        h('p', { class: 'muted small' },
+          'No good MIDI file? Find a video of the song on YouTube, copy its link (Share → Copy link), and paste it here. The app plays it and writes down its notes. A piano version works best.'),
         h('div', { class: 'row-actions' },
           h('a', {
             class: 'btn small', target: '_blank', rel: 'noopener noreferrer',
-            href: 'https://www.youtube.com/results?search_query=' + encodeURIComponent(search.query),
+            href: 'https://www.youtube.com/results?search_query=' + encodeURIComponent(search.query + ' piano'),
           }, 'Search YouTube ↗'),
-          h('button', { class: 'btn small', onClick: () => openAudio(search.query) }, 'Get the notes from it'),
+          h('button', { class: 'btn small', onClick: () => openYouTube('', search.query) }, 'Paste a YouTube link'),
         ),
       );
     }
     setChildren(searchEl, parts);
   }
 
-  /** Switch "Add a song" to From audio, e.g. after finding a song on YouTube. */
-  function openAudio(nameHint) {
-    audioImport.suggestName(nameHint);
-    state.mode = 'audio';
+  /** Switch "Add a song" to YouTube link, with a link to load (or to paste one). */
+  function openYouTube(link, nameHint) {
+    youtubeImport.suggestName(nameHint);
+    state.mode = 'youtube';
     renderAdd();
+    if (link) youtubeImport.loadLink(link);
+    else youtubeImport.focus();
     addEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -217,19 +237,18 @@ export function songView(root, { navigate } = {}) {
 
   // ---- add a song ---------------------------------------------------------
   function renderAdd() {
-    const tabs = h('div', { class: 'segmented wrap', role: 'tablist' },
-      [['midi', 'MIDI file'], ['audio', 'From audio'], ['text', 'Type notes']].map(([id, label]) => h('button', {
+    setChildren(addTabs, h('div', { class: 'segmented wrap', role: 'tablist' },
+      [['youtube', 'YouTube link'], ['midi', 'MIDI file'], ['audio', 'From audio'], ['text', 'Type notes']].map(([id, label]) => h('button', {
         class: 'seg wide' + (state.mode === id ? ' on' : ''),
         role: 'tab',
         'aria-selected': String(state.mode === id),
         onClick: () => { state.mode = id; renderAdd(); },
       }, label)),
-    );
-    addEl.replaceChildren(
-      h('h2', null, 'Add a song'),
-      tabs,
-      state.mode === 'midi' ? midiPanel() : state.mode === 'audio' ? audioImport.el : textPanel(),
-    );
+    ));
+    youtubeImport.el.hidden = state.mode !== 'youtube';
+    audioImport.el.hidden = state.mode !== 'audio';
+    addBody.hidden = state.mode !== 'midi' && state.mode !== 'text';
+    setChildren(addBody, state.mode === 'midi' ? midiPanel() : state.mode === 'text' ? textPanel() : null);
   }
 
   function midiPanel() {
@@ -470,5 +489,6 @@ export function songView(root, { navigate } = {}) {
     off();
     if (search.controller) search.controller.abort();
     audioImport.destroy();
+    youtubeImport.destroy();
   };
 }

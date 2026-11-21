@@ -18,6 +18,7 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
 | Sheet music view (read the notes on a staff) | ✅ done |
 | Songs from audio (a browser tab, the microphone, or an audio file) | ✅ done |
 | Chords: each piano plays one key at a time or several | ✅ done |
+| Songs from a YouTube link | ✅ done |
 
 ## Using it
 
@@ -34,11 +35,11 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
 
 ### Finding songs
 
-Type a song name in **Songs → Find a song** and press **Search**:
+Type a song name in **Songs → Find a song** and press **Search** (or paste a YouTube link there; see below):
 
 - **Built-in and your songs** that match are listed first. Accents and capitals don't matter, so `fur elise` finds *Für Elise*. **Play** opens the song straight in the tutor.
 - **Online MIDI files** come from [bitmidi.com](https://bitmidi.com), a public archive of MIDI files shared by its users. **Open** downloads one into the MIDI importer below. Pick the track with the melody, then **Save and play**. Quality varies: some files have the melody on its own track, some are full arrangements. **More results** loads the next page.
-- **On YouTube:** **Search YouTube** opens YouTube's results in a new tab. Pick a version you like, then **Get the notes from it**. That opens *From audio* (below), where the app listens to the video and writes down its notes.
+- **On YouTube:** **Search YouTube** opens YouTube's results for the song (plus "piano") in a new tab. Copy the link of a video you like, then **Paste a YouTube link** (see *Songs from a YouTube link* below).
 
 Only your search words are sent to bitmidi.com (and to YouTube when you open its search). Online search needs an internet connection; everything else works offline.
 
@@ -48,8 +49,9 @@ Only your search words are sent to bitmidi.com (and to YouTube when you open its
 
 To add your own, open **Songs → Add a song**. The song you save becomes the *active* song.
 
+- **YouTube link:** paste a video's link, and the app plays it and writes down its notes; see *Songs from a YouTube link* below.
 - **MIDI file:** choose a `.mid` file and pick the track that holds the melody. The app suggests one (the highest-pitched track with a fair number of notes), and drum tracks can't be picked. Each track shows its note count and range. If a track has chords, **Melody only** keeps just the highest note at each moment. It's on unless the active piano plays chords. Only the chosen track is saved, not the whole file.
-- **From audio:** turn a recording into notes; see the next section.
+- **From audio:** turn a recording into notes; see *Songs from audio* below.
 - **Type notes:** one note per word, e.g. `C4 D4 E4 C4/2 G4`.
 
   | Write | Means |
@@ -66,17 +68,37 @@ To add your own, open **Songs → Add a song**. The song you save becomes the *a
 
 Every song is stored as a list of `{ midi, startTime, duration }` with times in seconds, starting at 0.
 
+### Songs from a YouTube link
+
+**Songs → Add a song → YouTube link:** paste a link to a video of the song and press **Find the notes**. Pasting the link into the song search box works too. Any YouTube link works: `youtube.com/watch?v=…`, `youtu.be/…` (from **Share → Copy link**), Shorts and YouTube Music. A start time in the link (`&t=1m30s`) is used.
+
+1. The video plays inside the app, in YouTube's own player.
+2. **On a computer** (Chrome or Edge), the browser first asks to share this tab, so the app can hear the video. Keep **Also share tab audio** on and allow it.
+   **On a phone**, the app listens with the microphone while the video plays out loud. Turn the volume up and keep the room quiet.
+3. It stops by itself when the video ends (at most 5 minutes), or press **Stop and find the notes** when the part you want is over. To start later in the song, move the video there first.
+4. The sound is turned into notes as described in *Songs from audio* below. The song is named after the video, without the "(Official Video)" kind of extras.
+
+While listening, the app only keeps the sound while the video itself plays (`src/song/youtube.js`):
+
+- If an ad plays first, it waits: the video's own clock doesn't move during an ad.
+- Pausing the video pauses the recording too.
+- The player reports the start a little late, so the moment just before is added back.
+
+Some videos can't play inside other apps (the owner turned that off, often for official music videos). For those, the app shows how to use YouTube's own page instead: open it there, choose **Record that tab**, then play it. That recording stops by itself a few seconds after the sound ends.
+
+The app doesn't download anything from YouTube. It has no server, YouTube doesn't let other websites fetch its audio, and the sites that rip it break YouTube's terms. The video plays normally, and the app listens the way you would by ear. The sound stays on your device and is never saved; only the notes are kept.
+
 ### Songs from audio
 
 **Songs → Add a song → From audio** listens to a recording and writes down its notes. There are three ways to give it the sound:
 
-- **Record a browser tab** (Chrome or Edge on a computer): play the song in another tab, e.g. a YouTube video. Choose that tab when the browser asks, and turn on **Also share tab audio**. Then press **Stop and find the notes** when the song ends.
+- **Record a browser tab** (Chrome or Edge on a computer): play the song in another tab. Choose that tab when the browser asks, and turn on **Also share tab audio**. It stops by itself a few seconds after the sound ends, or press **Stop and find the notes**.
 - **Record with the microphone:** play the song out loud near the device (from a speaker or another phone), or sing, hum or whistle it. This works on phones too.
 - **Choose an audio file:** an MP3, M4A, WAV or OGG file you already have.
 
 Recordings can be up to 5 minutes long.
 
-The app doesn't download audio from YouTube. It has no server, YouTube doesn't let other websites fetch its audio, and the sites that rip it break YouTube's terms. Listening to the tab while it plays is the same as listening by ear. The recording stays on your device and is never saved; only the notes are kept.
+The recording stays on your device and is never saved; only the notes are kept.
 
 The notes are found by [Basic Pitch](https://github.com/spotify/basic-pitch-ts) (Spotify, Apache-2.0), a small neural network that runs in the browser with TensorFlow.js. It uses the graphics card if it can. It downloads about 1 MB the first time and is then cached for offline use.
 
@@ -195,13 +217,15 @@ src/
             search.js (song search + bitmidi.com), sheet.js (notes -> ABC sheet music: bars,
             ties, beams, chords, accidentals, clef choice), transcribe.js (audio -> notes with
             Basic Pitch), tempo.js (tempo from note starts), tf.js (the parts of TensorFlow.js
-            Basic Pitch needs)
+            Basic Pitch needs), youtube.js (read a YouTube link, song name from a video title,
+            when to listen)
   mapping/  transpose.js (transposition search, note mapping, fit explanation),
             mappingStore.js (settings per piano + song)
   ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js, mapView.js,
             tutorView.js (Play screen), tutorCanvas.js (falling notes + keys),
             sheetView.js (sheet music with abcjs, current-note highlight),
-            audioImport.js (Add a song -> From audio),
+            audioImport.js (Add a song -> YouTube link and From audio),
+            youtubePlayer.js (YouTube's embedded player),
             tutorEngine.js (song clock, listen-and-wait, scoring; no DOM)
   main.js   hash router + service worker registration
 public/     manifest.webmanifest, sw.js, icons/, models/basic-pitch/ (the note-finder

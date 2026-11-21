@@ -97,21 +97,25 @@ export function canCaptureTab() {
 }
 
 /**
- * Record the sound of another browser tab (e.g. a video playing there). The
- * browser asks which tab to share; "Also share tab audio" must be on.
+ * Record the sound of a browser tab (e.g. a video playing there). The browser
+ * asks which tab to share; "Also share tab audio" must be on.
+ * @param {object} [o]
+ * @param {boolean} [o.thisTab]  this app's own tab (a video playing inside the
+ *   app); the browser then just asks to allow it
  * @returns {Promise<{sampleRate:number, subscribe:Function, onEnded:(fn:()=>void)=>void, close:()=>void}>}
  */
-export async function openTabAudio() {
+export async function openTabAudio({ thisTab = false } = {}) {
   if (!canCaptureTab()) {
-    throw new MicError('unsupported', 'This browser can’t record another tab. Use Chrome or Edge on a computer, or record with the microphone.');
+    throw new MicError('unsupported', 'This browser can’t record a tab. Use Chrome or Edge on a computer, or record with the microphone.');
   }
   let stream;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: true, // required; only the sound is used
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      selfBrowserSurface: 'exclude',
-      systemAudio: 'include',
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false },
+      ...(thisTab
+        ? { preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude', systemAudio: 'exclude' }
+        : { selfBrowserSurface: 'exclude', systemAudio: 'include' }),
     });
   } catch (err) {
     if (err && err.name === 'NotAllowedError') throw new MicError('denied', 'Sharing was cancelled.');
@@ -120,7 +124,9 @@ export async function openTabAudio() {
   const audio = stream.getAudioTracks();
   if (!audio.length) {
     stream.getTracks().forEach((t) => t.stop());
-    throw new MicError('no-audio', 'No sound was shared. Choose the tab with the video and turn on “Also share tab audio”.');
+    throw new MicError('no-audio', thisTab
+      ? 'No sound was shared. Try again and keep “Also share tab audio” on.'
+      : 'No sound was shared. Choose the tab with the video and turn on “Also share tab audio”.');
   }
   const cap = await captureStream(stream);
   cap.onEnded = (fn) => audio[0].addEventListener('ended', fn, { once: true });

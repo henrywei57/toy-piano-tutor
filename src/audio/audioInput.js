@@ -52,33 +52,92 @@ export async function decodeAudio(data, rate) {
 }
 
 /**
+ * Notice that a song in another tab has ended: after some sound, a few
+ * seconds of near silence (a video's end, or the gap before the next video).
+ * A tab's sound is silent between songs, unlike a microphone's.
+ * update(db, seconds) is fed each block's level and length; true = stop now.
+ */
+export function createEndDetector({ quietDb = -65, quietFor = 4, soundFor = 3 } = {}) {
+  let sound = 0;
+  let quiet = 0;
+  return {
+    update(db, seconds) {
+      if (db > quietDb) {
+        sound += seconds;
+        quiet = 0;
+      } else if (sound >= soundFor) {
+        quiet += seconds;
+      }
+      return sound >= soundFor && quiet >= quietFor;
+    },
+  };
+}
+
+/**
  * Record from a capture ({sampleRate, subscribe}) until stop() or the limit.
+ * The recording can be paused (setOpen(false)): sound while paused is not
+ * kept, except the last couple of seconds, which setOpen(true, back) can add
+ * back in.
  * @param {object} capture  openMic() / openTabAudio() result
  * @param {object} [o]
  * @param {number} [o.maxSeconds=300]
- * @param {(db:number)=>void} [o.onLevel]   level of each block, dBFS
+ * @param {boolean} [o.open=true]          start recording right away
+ * @param {(db:number, seconds:number)=>void} [o.onLevel]   level of each block (dBFS) and its length
  * @param {()=>void} [o.onLimit]            the limit was reached
- * @returns {{seconds:number, stop:()=>{samples:Float32Array, sampleRate:number}}}
+ * @returns {{seconds:number, open:boolean, setOpen:(on:boolean, back?:number)=>void,
+ *   stop:()=>{samples:Float32Array, sampleRate:number}}}
  */
-export function recordCapture(capture, { maxSeconds = 300, onLevel, onLimit } = {}) {
+export function recordCapture(capture, { maxSeconds = 300, open = true, onLevel, onLimit } = {}) {
+  const rate = capture.sampleRate;
   const blocks = [];
-  const max = Math.round(maxSeconds * capture.sampleRate);
+  const max = Math.round(maxSeconds * rate);
+  const keepBack = 2 * rate;
+  let recent = []; // sound while paused: the last couple of seconds
+  let recentLength = 0;
   let length = 0;
   let stopped = false;
-  const off = capture.subscribe((block) => {
-    if (stopped || length >= max) return;
+  let isOpen = open;
+
+  function keep(block) {
+    if (length >= max) return;
     const take = block.length > max - length ? block.subarray(0, max - length) : block;
     blocks.push(take);
     length += take.length;
+    if (length >= max && onLimit) onLimit();
+  }
+
+  const off = capture.subscribe((block) => {
+    if (stopped || length >= max) return;
     if (onLevel) {
       let sum = 0;
-      for (let i = 0; i < take.length; i++) sum += take[i] * take[i];
-      onLevel(10 * Math.log10(sum / Math.max(1, take.length) + 1e-12));
+      for (let i = 0; i < block.length; i++) sum += block[i] * block[i];
+      onLevel(10 * Math.log10(sum / Math.max(1, block.length) + 1e-12), block.length / rate);
     }
-    if (length >= max && onLimit) onLimit();
+    if (isOpen) return keep(block);
+    recent.push(block);
+    recentLength += block.length;
+    while (recent.length > 1 && recentLength - recent[0].length >= keepBack) recentLength -= recent.shift().length;
   });
+
   return {
-    get seconds() { return length / capture.sampleRate; },
+    get seconds() { return length / rate; },
+    get open() { return isOpen; },
+    setOpen(on, back = 0) {
+      if (stopped || on === isOpen) return;
+      if (on && back > 0) {
+        let need = Math.min(Math.round(back * rate), recentLength);
+        const tail = [];
+        for (let i = recent.length - 1; i >= 0 && need > 0; i--) {
+          const b = recent[i];
+          tail.unshift(b.length > need ? b.subarray(b.length - need) : b);
+          need -= b.length;
+        }
+        tail.forEach(keep);
+      }
+      recent = [];
+      recentLength = 0;
+      isOpen = on;
+    },
     stop() {
       stopped = true;
       off();
