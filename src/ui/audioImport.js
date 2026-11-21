@@ -13,7 +13,7 @@ import { melodyOnly, isPolyphonic, noteStats, formatRange, formatDuration } from
 import { estimateTempo } from '../song/tempo.js';
 import { parseYouTubeLink, songNameFromTitle, createListenGate } from '../song/youtube.js';
 import { loadYouTubeApi, createYouTubePlayer } from './youtubePlayer.js';
-import { findHelper, helperRemembered, downloadAudio } from '../song/youtubeHelper.js';
+import { findHelper, helperRemembered, downloadAudio, localAccessBlocked } from '../song/youtubeHelper.js';
 
 const DETAILS = [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']];
 const TIP = 'Works best when one melody stands out: a piano version, a solo instrument, or singing. Full band recordings give rough results.';
@@ -148,7 +148,11 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
     // The first time, the browser may ask to let the site reach this computer.
     const found = await findHelper({ timeout: asked ? 60000 : 2500 });
     st.helper = found && found.ytdlp ? 'on' : 'off';
-    if (!found && asked) st.helperError = 'The helper isn’t running on this computer. Start it (step 2), then press Use the helper again.';
+    if (!found && asked) {
+      st.helperError = await localAccessBlocked()
+        ? 'This browser is blocking the app from reaching apps on this computer. Click the icon at the left of the address bar, open the site’s settings, and allow local network access (or apps on this device). Then press Use the helper again.'
+        : 'The helper isn’t running on this computer. Start it (step 2), then press Use the helper again.';
+    }
     if (found && !found.ytdlp) st.helperError = 'The helper is running but can’t find yt-dlp. Install it (step 1), then restart the helper.';
     render();
   }

@@ -102,7 +102,7 @@ The web app can't download from YouTube by itself: it has no server, and YouTube
 
 1. Once: install yt-dlp: `python -m pip install "yt-dlp[default]"` (needs Python 3.10+).
 2. Start the helper: in this folder, run `npm run youtube-helper`. On Windows you can double-click `tools\youtube-helper.cmd` instead. Leave its window open while you use the app.
-3. In the app, open a YouTube link, then **Skip sharing the tab → Use the helper**. The browser may ask to let the site use apps and services on this device: allow it. From then on, the app looks for the helper by itself.
+3. In the app, open a YouTube link, then **Skip sharing the tab → Use the helper**. The browser may ask to let the site use apps and services on this device: allow it. (If it was blocked, change it in the site's settings: the icon at the left of the address bar.) From then on, the app looks for the helper by itself.
 
 Good to know:
 

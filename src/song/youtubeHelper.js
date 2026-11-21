@@ -36,6 +36,20 @@ export async function findHelper({ timeout = 2500, fetchImpl = globalThis.fetch 
   }
 }
 
+/**
+ * Has the browser been told not to let this site reach apps on this computer?
+ * (Chrome and Edge ask once before a website may talk to 127.0.0.1.)
+ */
+export async function localAccessBlocked() {
+  if (typeof navigator === 'undefined' || !navigator.permissions) return false;
+  for (const name of ['loopback-network', 'local-network-access']) {
+    try {
+      if ((await navigator.permissions.query({ name })).state === 'denied') return true;
+    } catch { /* this browser doesn't know the permission */ }
+  }
+  return false;
+}
+
 export class HelperError extends Error {
   constructor(message, { notRunning = false } = {}) {
     super(message);
