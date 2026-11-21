@@ -32,6 +32,11 @@ describe('melody helpers', () => {
     expect(out.map((x) => [x.midi, x.startTime, x.duration])).toEqual([[60, 0, 1], [67, 1, 1]]);
   });
 
+  it('keeps a melody that steps down with a small legato overlap', () => {
+    const out = melodyOnly([n(62, 0, 0.64), n(60, 0.6, 1), n(52, 0.9, 0.5)]);
+    expect(out.map((x) => [x.midi, x.startTime])).toEqual([[62, 0], [60, 0.6]]);
+  });
+
   it('normalises: sorts, drops empty notes, shifts to start at 0', () => {
     const out = normalizeNotes([n(64, 3, 1), n(62, 2.5, 0), n(60, 2, 0.5)]);
     expect(out).toEqual([n(60, 0, 0.5), n(64, 1, 1)]);

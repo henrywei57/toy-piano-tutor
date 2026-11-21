@@ -40,6 +40,19 @@ export function profilesView(root, { navigate }) {
             onClick: () => { store.setActiveId(p.id); navigate('#/calibrate/' + p.id); },
           }, measured ? 'Open' : 'Calibrate'),
         ),
+        h('div', { class: 'stack tight' },
+          h('div', { class: 'label-like', id: 'keys-at-once-' + p.id }, 'Keys at once'),
+          h('div', { class: 'segmented wrap', role: 'group', 'aria-labelledby': 'keys-at-once-' + p.id },
+            [[false, 'One key at a time'], [true, 'Several keys (chords)']].map(([on, label]) => h('button', {
+              class: 'seg wide' + (Boolean(p.chords) === on ? ' on' : ''),
+              'aria-pressed': String(Boolean(p.chords) === on),
+              onClick: () => { if (Boolean(p.chords) !== on) store.setChords(p.id, on); },
+            }, label)),
+          ),
+          h('div', { class: 'muted small' }, p.chords
+            ? 'Songs keep their chords, and Listen & wait listens for every key of a chord.'
+            : 'Songs with chords are played as their melody: the top note at each moment.'),
+        ),
         h('div', { class: 'row-actions' },
           !isActive && h('button', { class: 'btn small', onClick: () => { store.setActiveId(p.id); toast(`“${p.name}” is now active`); } }, 'Set active'),
           h('button', {

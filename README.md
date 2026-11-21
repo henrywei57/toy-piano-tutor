@@ -16,6 +16,8 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
 | 4. Tutor mode (falling notes, listen-and-wait) | ✅ done |
 | Song search (built-in, saved, and online MIDI files) | ✅ done |
 | Sheet music view (read the notes on a staff) | ✅ done |
+| Songs from audio (a browser tab, the microphone, or an audio file) | ✅ done |
+| Chords: each piano plays one key at a time or several | ✅ done |
 
 ## Using it
 
@@ -25,7 +27,10 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
    - ⚠ **Not higher than key N** or **Jumps … semitones**: probably an octave error. Open **Edit** and use **×2 / ÷2**, or **Record** the key again.
    - **Edit** lets you type a frequency (`523.4`) or a note (`C5`, `F#4`, `Bb5-20`) yourself.
    - **Skip** marks a broken or missing key so it's never used.
-4. **Export** a profile to back it up or move it to another device, and **Import** it there.
+4. **Keys at once:** set each piano to **One key at a time** (many electronic toy keyboards can only sound one) or **Several keys (chords)**.
+   - With one key, a song with chords is played as its melody: the top note at each moment.
+   - With several, the chords stay in the falling notes, the sheet music and Listen & wait.
+5. **Export** a profile to back it up or move it to another device, and **Import** it there.
 
 ### Finding songs
 
@@ -33,8 +38,9 @@ Type a song name in **Songs → Find a song** and press **Search**:
 
 - **Built-in and your songs** that match are listed first. Accents and capitals don't matter, so `fur elise` finds *Für Elise*. **Play** opens the song straight in the tutor.
 - **Online MIDI files** come from [bitmidi.com](https://bitmidi.com), a public archive of MIDI files shared by its users. **Open** downloads one into the MIDI importer below. Pick the track with the melody, then **Save and play**. Quality varies: some files have the melody on its own track, some are full arrangements. **More results** loads the next page.
+- **On YouTube:** **Search YouTube** opens YouTube's results in a new tab. Pick a version you like, then **Get the notes from it**. That opens *From audio* (below), where the app listens to the video and writes down its notes.
 
-Only your search words are sent to bitmidi.com, and online search needs an internet connection. Everything else works offline.
+Only your search words are sent to bitmidi.com (and to YouTube when you open its search). Online search needs an internet connection; everything else works offline.
 
 ### Adding songs
 
@@ -42,7 +48,8 @@ Only your search words are sent to bitmidi.com, and online search needs an inter
 
 To add your own, open **Songs → Add a song**. The song you save becomes the *active* song.
 
-- **MIDI file:** choose a `.mid` file and pick the track that holds the melody. The app suggests one (the highest-pitched track with a fair number of notes), and drum tracks can't be picked. Each track shows its note count and range. If a track has chords, **Melody only** keeps just the highest note at each moment. Only the chosen melody is saved, not the whole file.
+- **MIDI file:** choose a `.mid` file and pick the track that holds the melody. The app suggests one (the highest-pitched track with a fair number of notes), and drum tracks can't be picked. Each track shows its note count and range. If a track has chords, **Melody only** keeps just the highest note at each moment. It's on unless the active piano plays chords. Only the chosen track is saved, not the whole file.
+- **From audio:** turn a recording into notes; see the next section.
 - **Type notes:** one note per word, e.g. `C4 D4 E4 C4/2 G4`.
 
   | Write | Means |
@@ -58,6 +65,28 @@ To add your own, open **Songs → Add a song**. The song you save becomes the *a
   Set the tempo in BPM. Mistakes are listed with their position (e.g. *Note 16 "H4": Not a note name*).
 
 Every song is stored as a list of `{ midi, startTime, duration }` with times in seconds, starting at 0.
+
+### Songs from audio
+
+**Songs → Add a song → From audio** listens to a recording and writes down its notes. There are three ways to give it the sound:
+
+- **Record a browser tab** (Chrome or Edge on a computer): play the song in another tab, e.g. a YouTube video. Choose that tab when the browser asks, and turn on **Also share tab audio**. Then press **Stop and find the notes** when the song ends.
+- **Record with the microphone:** play the song out loud near the device (from a speaker or another phone), or sing, hum or whistle it. This works on phones too.
+- **Choose an audio file:** an MP3, M4A, WAV or OGG file you already have.
+
+Recordings can be up to 5 minutes long.
+
+The app doesn't download audio from YouTube. It has no server, YouTube doesn't let other websites fetch its audio, and the sites that rip it break YouTube's terms. Listening to the tab while it plays is the same as listening by ear. The recording stays on your device and is never saved; only the notes are kept.
+
+The notes are found by [Basic Pitch](https://github.com/spotify/basic-pitch-ts) (Spotify, Apache-2.0), a small neural network that runs in the browser with TensorFlow.js. It uses the graphics card if it can. It downloads about 1 MB the first time and is then cached for offline use.
+
+After converting, you can:
+
+- **Notes to find:** choose **Fewer**, **Normal** or **More**. Pick More if notes are missing, Fewer if there are extra ones.
+- **Melody only:** keep the highest note at each moment. This is on by default, because the rest of a recording is mostly accompaniment.
+- **Tempo:** set the guessed BPM, or use **÷ 2** / **× 2**. It's used for the metronome and the sheet music; the notes keep their timing either way.
+
+Results are best when one melody stands out: a solo instrument, singing, or a simple piano version. Full band recordings give rough results. The app also cleans up what the model finds: it drops echo notes on a louder note's harmonics, and the short blips as a note dies away.
 
 ### Fitting a song to your piano
 
@@ -89,6 +118,7 @@ The **Play** screen has two views. Switch between them at the top right.
 - **Listen & wait:** uses the microphone.
   - The song stops at each note until you play it, and moves on only when it hears the **right key**. The key is matched to the nearest measured key, and an octave error in detection is tolerated.
   - A wrong key flashes red ("That was key 7, play key 5"). A right one flashes green.
+  - **Chords** (pianos set to several keys): the song waits until it has heard every key of the chord. Play the keys together or one after another. A pitch detector hears only one note, so for a chord the app also checks each key the chord needs at that key's measured pitch. It only counts a key whose sound appeared with the new strike, and ignores harmonics of a lower key (`src/audio/chordDetect.js`).
   - At the end you get an **accuracy score**: right keys ÷ all keys played.
   - Sound and metronome are switched off in this mode so the microphone only hears your piano.
 
@@ -99,7 +129,8 @@ On a narrow phone screen with many keys, the keyboard zooms to the keys the song
 - **Under each note:** your **key numbers**, the **note names** (`E5`), or **nothing** for reading practice.
 - The note being played turns pink and the sheet scrolls along. In Listen & wait, the note to play next pulses and the ones you've played turn green.
 - The staff shows the notes **your keys really play**, after the Map screen's transposition and octave folding. A high toy piano gets a treble clef with a small **8** above it (it sounds an octave higher than written), so the notes sit on the staff instead of on stacks of ledger lines.
-- Bar lines come from the song's time signature and pickup. Built-in songs have theirs, MIDI files bring theirs, and for typed songs the app reads your `|` bar lines.
+- Notes played together are written as a chord. Their labels are stacked under it, top note first.
+- Bar lines come from the song's time signature and pickup. Built-in songs have theirs, MIDI files bring theirs, and for typed songs the app reads your `|` bar lines. Songs from audio use 4/4 at the guessed tempo.
 - Some MIDI files were recorded by someone playing rather than written note by note. Their rhythms can't be written exactly, so the sheet says the rhythms are approximate. The notes and keys are still right.
 
 The engraving is done by [abcjs](https://www.abcjs.net/) (MIT licence). It loads the first time you open sheet music, about 130 KB, and is then cached for offline use.
@@ -155,21 +186,26 @@ One-time setup for a fork: **Settings → Pages → Build and deployment → Sou
 
 ```
 src/
-  audio/    mic.js (capture), yin.js, onset.js, analyze.js, strikeListener.js, notes.js,
-            synth.js (playback tones + metronome click)
+  audio/    mic.js (mic and browser-tab capture), yin.js, onset.js, analyze.js,
+            strikeListener.js, notes.js, synth.js (playback tones + metronome click),
+            chordDetect.js (which keys of a chord sound), audioInput.js (decode, resample, record)
   profile/  profile.js (model, octave-error flags), store.js (localStorage, export/import)
   song/     notation.js (typed notes), midi.js (@tonejs/midi import), melody.js (melody only,
             polyphony check, stats), library.js (built-in songs), songStore.js (saved songs),
             search.js (song search + bitmidi.com), sheet.js (notes -> ABC sheet music: bars,
-            ties, beams, accidentals, clef choice)
+            ties, beams, chords, accidentals, clef choice), transcribe.js (audio -> notes with
+            Basic Pitch), tempo.js (tempo from note starts), tf.js (the parts of TensorFlow.js
+            Basic Pitch needs)
   mapping/  transpose.js (transposition search, note mapping, fit explanation),
             mappingStore.js (settings per piano + song)
   ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js, mapView.js,
             tutorView.js (Play screen), tutorCanvas.js (falling notes + keys),
             sheetView.js (sheet music with abcjs, current-note highlight),
+            audioImport.js (Add a song -> From audio),
             tutorEngine.js (song clock, listen-and-wait, scoring; no DOM)
   main.js   hash router + service worker registration
-public/     manifest.webmanifest, sw.js, icons/
+public/     manifest.webmanifest, sw.js, icons/, models/basic-pitch/ (the note-finder
+            model from @spotify/basic-pitch, Apache-2.0)
 tests/      vitest unit tests + synthetic signal generators
 tools/      make-icons.mjs
 ```

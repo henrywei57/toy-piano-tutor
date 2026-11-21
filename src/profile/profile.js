@@ -2,6 +2,7 @@
 //
 // profile = {
 //   id, name, numKeys, createdAt, updatedAt,
+//   chords: boolean,   // false: the piano sounds one key at a time; true: several at once
 //   keys: [{ freq: number|null, takes: number[], source: 'detected'|'manual'|null, skip: boolean }]
 // }
 // Keys are numbered left (lowest) to right (highest), 1-based in the UI.
@@ -26,6 +27,7 @@ export function createProfile(name, numKeys) {
     id: newId(),
     name: String(name || '').trim() || 'My toy piano',
     numKeys: n,
+    chords: false,
     createdAt: now,
     updatedAt: now,
     keys: Array.from({ length: n }, emptyKey),
@@ -115,6 +117,7 @@ export function normalizeProfile(raw) {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     name: String(raw.name || 'Imported piano').slice(0, 80),
     numKeys,
+    chords: raw.chords === true,
     createdAt: Number(raw.createdAt) || Date.now(),
     updatedAt: Number(raw.updatedAt) || Date.now(),
     keys,

@@ -7,6 +7,7 @@ import { createSheetView } from './sheetView.js';
 import { createLevelMeter } from './levelMeter.js';
 import { getActiveProfile, getSettings, updateSettings } from '../profile/store.js';
 import { getActiveSong } from '../song/songStore.js';
+import { notesForPiano } from '../song/melody.js';
 import { keysFromProfile, mapNotes, formatShift } from '../mapping/transpose.js';
 import { resolveMapping } from '../mapping/mappingStore.js';
 import { buildTimeline, matchKey, TutorEngine } from './tutorEngine.js';
@@ -14,6 +15,7 @@ import { freqToNote, midiToFreq } from '../audio/notes.js';
 import { unlockAudio, playTone, click, closeAudio } from '../audio/synth.js';
 import { openMic, closeMic } from '../audio/mic.js';
 import { listenForStrikes, tutorListenOptions } from '../audio/strikeListener.js';
+import { keysSounding } from '../audio/chordDetect.js';
 
 const LOOKAHEAD = 3;      // song seconds visible above the hit line
 const LEAD_IN = 1.5;      // song seconds before the first note
@@ -37,9 +39,10 @@ export function tutorView(root) {
   }
 
   const mapping = resolveMapping(profile, song);
-  const events = buildTimeline(mapNotes(song.notes, keys, mapping));
+  const events = buildTimeline(mapNotes(notesForPiano(song.notes, profile), keys, mapping));
   const keyNames = profile.keys.map((k) => (k.freq ? freqToNote(k.freq).name : ''));
   const keyLabel = (i) => `key ${i + 1}` + (keyNames[i] ? ` (${keyNames[i]})` : '');
+  const keysText = (list) => list.map(keyLabel).join(' + ');
 
   if (!events.length) {
     root.replaceChildren(h('section', { class: 'stack' },
@@ -72,7 +75,8 @@ export function tutorView(root) {
   const usedRange = [Math.min(...events.map((e) => e.key)), Math.max(...events.map((e) => e.key))];
   const bpm = song.bpm > 0 ? song.bpm : 100;
   let engine = new TutorEngine(events, { waitMode: false, leadIn: LEAD_IN });
-  let flash = null;           // {key, kind, until}
+  const hasChords = engine.steps.some((s) => s.idx.length > 1);
+  let flash = null;           // {keys, kind, until}
   let nextBeat = 0;           // metronome: index of the next beat to click
   let mic = null;
   let listener = null;
@@ -235,18 +239,29 @@ export function tutorView(root) {
     restart();
   }
 
-  function handleStrike(result) {
-    if (!state.playing || !state.wait || !result.ok) return;
-    const m = matchKey(result.freq, keys);
-    if (!m) return; // not near any key: a knock, a voice, …
-    const expected = engine.expected;
-    const outcome = engine.strike(m.index);
+  function handleStrike(result, take) {
+    if (!state.playing || !state.wait) return;
+    const want = engine.expectedEvents;
+    if (!want.length) return;
+    const m = result.ok ? matchKey(result.freq, keys) : null;
+    // A chord: check each key it still needs (the pitch detector hears one note).
+    let also = [];
+    if (engine.stepSize > 1 && take && mic) {
+      const on = keysSounding(take, mic.sampleRate, want.map((ev) => profile.keys[ev.key].freq));
+      also = want.filter((_, i) => on[i]).map((ev) => ev.key);
+    }
+    if (!m && !also.length) return; // not near any key: a knock, a voice, …
+    const step = engine.step;
+    const outcome = engine.strike(m ? m.index : null, also);
     if (outcome === 'ignored') return;
-    flash = { key: m.index, kind: outcome, until: performance.now() + FLASH_MS };
     if (outcome === 'correct') {
-      state.feedback = { kind: 'ok', text: `✓ ${keyLabel(m.index)}` };
+      const played = want.filter((ev) => (m && ev.key === m.index) || also.includes(ev.key)).map((ev) => ev.key);
+      const left = engine.step === step ? engine.expectedEvents.map((ev) => ev.key) : [];
+      flash = { keys: played, kind: 'correct', until: performance.now() + FLASH_MS };
+      state.feedback = { kind: 'ok', text: `✓ ${keysText(played)}` + (left.length ? ` — now ${keysText(left)}` : '') };
     } else {
-      state.feedback = { kind: 'error', text: `✗ That was ${keyLabel(m.index)} — play ${keyLabel(expected.key)}` };
+      flash = { keys: [m.index], kind: 'wrong', until: performance.now() + FLASH_MS };
+      state.feedback = { kind: 'error', text: `✗ That was ${keyLabel(m.index)} — play ${keysText(want.map((ev) => ev.key))}` };
     }
     renderStatus();
   }
@@ -284,13 +299,13 @@ export function tutorView(root) {
       results: engine.results,
       lookahead: LOOKAHEAD,
       lit: litKeys(now),
-      waitingIdx: engine.waiting ? engine.next : -1,
+      waiting: engine.waiting ? new Set(engine.expectedEvents.map((ev) => ev.i)) : null,
       usedRange,
     };
     const view = (state.view === 'sheet' ? keysCanvas : canvas).draw(frameInfo);
     if (sheet && state.view === 'sheet') {
       sheet.update(state.wait
-        ? { next: engine.next < events.length ? engine.next : -1, results: engine.results, done: engine.correct }
+        ? { next: engine.expectedEvents.map((ev) => ev.i), results: engine.results, done: engine.correct }
         : { now: engine.cursor > 0 && !engine.finished ? engine.cursor - 1 : -1 });
     }
     const portrait = window.innerHeight > window.innerWidth;
@@ -308,15 +323,14 @@ export function tutorView(root) {
     const lit = new Map();
     const t = engine.time;
     if (state.wait) {
-      const ev = engine.expected;
-      if (ev && ev.start - t <= 0.6) lit.set(ev.key, 'expected');
+      for (const ev of engine.expectedEvents) if (ev.start - t <= 0.6) lit.set(ev.key, 'expected');
     } else {
       for (let i = Math.max(0, engine.cursor - 8); i < engine.cursor; i++) {
         const ev = events[i];
         if (t >= ev.start && t < Math.min(ev.end, ev.start + 0.5)) lit.set(ev.key, 'play');
       }
     }
-    if (flash && now < flash.until) lit.set(flash.key, flash.kind);
+    if (flash && now < flash.until) for (const k of flash.keys) lit.set(k, flash.kind);
     return lit;
   }
 
@@ -343,7 +357,7 @@ export function tutorView(root) {
     if (progressEl.textContent !== progress) progressEl.textContent = progress;
     let fb = state.feedback;
     if (state.wait && engine.waiting && (!fb || fb.kind !== 'error')) {
-      fb = { kind: 'info', text: `Play ${keyLabel(engine.expected.key)}` };
+      fb = { kind: 'info', text: `Play ${keysText(engine.expectedEvents.map((ev) => ev.key))}` };
     }
     const text = fb ? fb.text : '';
     if (feedbackEl.textContent !== text) feedbackEl.textContent = text;
@@ -365,7 +379,9 @@ export function tutorView(root) {
     set(toggles.wait, state.wait, state.listen === 'starting');
     toggles.wait.textContent = state.listen === 'starting' ? 'Starting mic…' : 'Listen & wait';
     noteEl.textContent = state.wait
-      ? 'The song waits for you: play each note on your piano and it moves on when it hears the right key. Sound and metronome are off so the mic only hears your piano.'
+      ? 'The song waits for you: play each note on your piano and it moves on when it hears the right key.'
+        + (hasChords ? ' For a chord, play its keys together or one after another.' : '')
+        + ' Sound and metronome are off so the mic only hears your piano.'
       : state.view === 'sheet'
         ? 'Read the notes on the staff. The note being played turns pink, and your keys light up below. Turn on “Listen & wait” to play along with the microphone.'
         : 'Watch the notes fall onto your keys. Turn on “Listen & wait” to play along with the microphone.';

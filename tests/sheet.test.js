@@ -121,12 +121,10 @@ describe('buildSheet', () => {
     expect(body(abc)).toBe("c4 e4 |]"); // C5, E5 written
   });
 
-  it('uses the key’s real note, not the song’s, and skips duplicate onsets', () => {
+  it('uses the key’s real note, not the song’s', () => {
     const detuned = [60.4, 61.6]; // sounds C4 and D4 (rounded)
-    const events = [{ key: 0, start: 0, end: 1 }, { key: 1, start: 0.01, end: 1 }, { key: 1, start: 1, end: 2 }];
-    const { abc, chars } = buildSheet(events, { bpm: 60, keyMidi: detuned });
-    expect(body(abc)).toBe('C4 D4 |]');
-    expect(chars.map((c) => c.length)).toEqual([1, 0, 1]);
+    const events = [{ key: 0, start: 0, end: 1 }, { key: 1, start: 1, end: 2 }];
+    expect(body(buildSheet(events, { bpm: 60, keyMidi: detuned }).abc)).toBe('C4 D4 |]');
   });
 
   it('builds every built-in song without leaving notes out', () => {
@@ -137,6 +135,41 @@ describe('buildSheet', () => {
       expect(chars.every((c) => c.length > 0), s.name).toBe(true);
       expect(abc, s.name).toContain(`M:${s.meter.num}/${s.meter.den}`);
     }
+  });
+});
+
+describe('buildSheet chords', () => {
+  const opts = { bpm: 60, keyMidi };
+  // C major chord for 2 beats, then G4 for 2 beats.
+  const chord = [
+    { key: K.C4, start: 0, end: 2 }, { key: K.E4, start: 0.01, end: 2 }, { key: K.G4, start: 0, end: 2 },
+    { key: K.G4, start: 2, end: 4 },
+  ];
+
+  it('writes notes that start together as one chord, low to high', () => {
+    const { abc, chars } = buildSheet(chord, opts);
+    expect(body(abc)).toBe('[CEG]8 G8 |]');
+    // The three chord notes share the chord symbol.
+    expect(chars[0]).toEqual(chars[1]);
+    expect(chars[0]).toEqual(chars[2]);
+    expect(abc.slice(chars[0][0], chars[0][0] + 6)).toBe('[CEG]8');
+  });
+
+  it('stacks the labels of a chord, top note first', () => {
+    const abc = buildSheet(chord, opts).abc;
+    const w = abc.split('\n').filter((l) => l.startsWith('w: '));
+    expect(w).toEqual(['w: 6 6', 'w: 3 *', 'w: 1 *']);
+  });
+
+  it('ties a chord across the bar line, with accidentals in the chord', () => {
+    const events = [{ key: K['F#4'], start: 3, end: 5 }, { key: K.A4, start: 3, end: 5 }];
+    const { abc } = buildSheet([{ key: K.C4, start: 0, end: 3 }, ...events], opts);
+    expect(body(abc)).toBe('C12 [^FA]4- | [FA]4 |]');
+  });
+
+  it('plays one note per key even if a chord repeats a pitch', () => {
+    const same = [{ key: 0, start: 0, end: 1 }, { key: 1, start: 0, end: 1 }];
+    expect(body(buildSheet(same, { bpm: 60, keyMidi: [60, 60.2] }).abc)).toBe('C4 |]');
   });
 });
 

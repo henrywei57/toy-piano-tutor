@@ -1,7 +1,7 @@
 // Saved songs in localStorage. Only the chosen melody is stored (not the
 // whole MIDI file), normalised to { midi, startTime, duration } in seconds.
 //
-// song = { id, name, source: 'midi'|'text', bpm, notes, createdAt, text?, origin?, meter? }
+// song = { id, name, source: 'midi'|'text'|'audio', bpm, notes, createdAt, text?, origin?, meter? }
 // meter = { num, den, offset }: time signature, and how far (quarter notes) into
 // its bar the first note starts. Used to draw bar lines in the sheet music.
 

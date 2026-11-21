@@ -2,6 +2,7 @@
 // the song the way it was set up on the Map screen.
 
 import { DEFAULT_TOLERANCE, STRATEGIES, keysFromProfile, searchTranspositions } from './transpose.js';
+import { notesForPiano } from '../song/melody.js';
 
 const KEY = 'tpt.v1.mappings';
 
@@ -44,7 +45,7 @@ export function resolveMapping(profile, song) {
   let shift = saved && Number.isFinite(saved.shift) ? saved.shift : null;
   if (shift == null) {
     const keys = keysFromProfile(profile);
-    shift = keys.length ? searchTranspositions(song.notes, keys, { tolerance }).best.shift : 0;
+    shift = keys.length ? searchTranspositions(notesForPiano(song.notes, profile), keys, { tolerance }).best.shift : 0;
   }
   return { shift, tolerance, strategy, saved: Boolean(saved) };
 }

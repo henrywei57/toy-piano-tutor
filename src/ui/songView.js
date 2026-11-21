@@ -1,15 +1,17 @@
-// Songs screen: search (built-in, saved and online songs), saved songs, plus
-// "Add a song" from a MIDI file or typed notes.
+// Songs screen: search (built-in, saved and online songs, plus a YouTube
+// link), saved songs, and "Add a song" from a MIDI file, audio, or typed notes.
 
 import { h, toast, setChildren } from './dom.js';
 import { parseMidi } from '../song/midi.js';
 import { parseNotation } from '../song/notation.js';
-import { melodyOnly, noteStats, formatRange, formatDuration } from '../song/melody.js';
+import { melodyOnly, noteStats, formatRange, formatDuration, notesForPiano } from '../song/melody.js';
 import { meterFromText, barBeats } from '../song/sheet.js';
 import { searchLocal, searchOnline, downloadMidi } from '../song/search.js';
 import * as songs from '../song/songStore.js';
 import { getActiveProfile } from '../profile/store.js';
 import { keysFromProfile, searchTranspositions } from '../mapping/transpose.js';
+import { createAudioImport } from './audioImport.js';
+import { canCaptureTab } from '../audio/mic.js';
 
 const EXAMPLE = 'C4 C4 G4 G4 A4 A4 G4/2 | F4 F4 E4 E4 D4 D4 C4/2';
 
@@ -43,11 +45,12 @@ export function songView(root, { navigate } = {}) {
   const searchEl = h('div', { class: 'card stack' });
   const listEl = h('div');
   const addEl = h('div', { class: 'card stack' });
+  const audioImport = createAudioImport({ save: (data) => save(data), navigate });
 
   // ---- song rows ----------------------------------------------------------
   function rowContext() {
     const profile = getActiveProfile();
-    return { activeId: songs.getActiveSongId(), keys: profile ? keysFromProfile(profile) : [] };
+    return { activeId: songs.getActiveSongId(), keys: profile ? keysFromProfile(profile) : [], profile };
   }
 
   function play(id) {
@@ -55,13 +58,13 @@ export function songView(root, { navigate } = {}) {
     if (navigate) navigate('#/play');
   }
 
-  function songRow(s, { activeId, keys }) {
+  function songRow(s, { activeId, keys, profile }) {
     const st = noteStats(s.notes);
     const isActive = s.id === activeId;
     const deletable = s.source !== 'library';
-    const kind = s.source === 'midi' ? ' · MIDI' : s.source === 'text' ? ' · typed' : '';
+    const kind = s.source === 'midi' ? ' · MIDI' : s.source === 'text' ? ' · typed' : s.source === 'audio' ? ' · from audio' : '';
     // "fits 93%" for the active piano, at its best transposition.
-    const fit = keys.length ? ` · fits your piano ${Math.round(searchTranspositions(s.notes, keys).best.fraction * 100)}%` : '';
+    const fit = keys.length ? ` · fits your piano ${Math.round(searchTranspositions(notesForPiano(s.notes, profile), keys).best.fraction * 100)}%` : '';
     return h('li', { class: 'song-row' + (isActive ? ' active' : '') },
       h('div', { class: 'song-info' },
         h('div', { class: 'song-name' }, s.name, isActive && h('span', { class: 'badge' }, 'Active')),
@@ -165,8 +168,29 @@ export function songView(root, { navigate } = {}) {
       }
       parts.push(h('p', { class: 'muted small' },
         'Online results are MIDI files shared by people on bitmidi.com, so quality varies. Open one, pick the track with the melody, and save it.'));
+      parts.push(
+        h('h3', null, 'On YouTube'),
+        h('p', { class: 'muted small' }, canCaptureTab()
+          ? 'No good MIDI file? Find the song on YouTube, play it in another tab, and the app writes down its notes.'
+          : 'No good MIDI file? Find the song on YouTube, play it out loud from another device, and the app writes down its notes from the microphone.'),
+        h('div', { class: 'row-actions' },
+          h('a', {
+            class: 'btn small', target: '_blank', rel: 'noopener noreferrer',
+            href: 'https://www.youtube.com/results?search_query=' + encodeURIComponent(search.query),
+          }, 'Search YouTube ↗'),
+          h('button', { class: 'btn small', onClick: () => openAudio(search.query) }, 'Get the notes from it'),
+        ),
+      );
     }
     setChildren(searchEl, parts);
+  }
+
+  /** Switch "Add a song" to From audio, e.g. after finding a song on YouTube. */
+  function openAudio(nameHint) {
+    audioImport.suggestName(nameHint);
+    state.mode = 'audio';
+    renderAdd();
+    addEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ---- song lists ---------------------------------------------------------
@@ -193,8 +217,8 @@ export function songView(root, { navigate } = {}) {
 
   // ---- add a song ---------------------------------------------------------
   function renderAdd() {
-    const tabs = h('div', { class: 'segmented', role: 'tablist' },
-      [['midi', 'MIDI file'], ['text', 'Type notes']].map(([id, label]) => h('button', {
+    const tabs = h('div', { class: 'segmented wrap', role: 'tablist' },
+      [['midi', 'MIDI file'], ['audio', 'From audio'], ['text', 'Type notes']].map(([id, label]) => h('button', {
         class: 'seg wide' + (state.mode === id ? ' on' : ''),
         role: 'tab',
         'aria-selected': String(state.mode === id),
@@ -204,7 +228,7 @@ export function songView(root, { navigate } = {}) {
     addEl.replaceChildren(
       h('h2', null, 'Add a song'),
       tabs,
-      state.mode === 'midi' ? midiPanel() : textPanel(),
+      state.mode === 'midi' ? midiPanel() : state.mode === 'audio' ? audioImport.el : textPanel(),
     );
   }
 
@@ -266,7 +290,7 @@ export function songView(root, { navigate } = {}) {
           h('span', null, 'Melody only (keep the highest note at each moment)'),
         ));
         if (!state.melodyOnly) {
-          parts.push(h('div', { class: 'msg warn' }, 'This track plays several notes at once. A toy piano tutor works best with one note at a time.'));
+          parts.push(h('div', { class: 'msg warn' }, 'Keeps the chords. Pianos set to one key at a time still play only the top note.'));
         }
       }
       parts.push(
@@ -314,7 +338,8 @@ export function songView(root, { navigate } = {}) {
       const parsed = parseMidi(data);
       state.parsed = parsed;
       state.trackIdx = parsed.suggested >= 0 ? parsed.suggested : parsed.tracks.findIndex((t) => !t.percussion);
-      state.melodyOnly = true;
+      const profile = getActiveProfile();
+      state.melodyOnly = !(profile && profile.chords);
       state.midiName = nameHint || parsed.name || fileName.replace(/\.(mid|midi|kar)$/i, '');
     } catch (err) {
       state.midiError = err.message;
@@ -444,5 +469,6 @@ export function songView(root, { navigate } = {}) {
   return () => {
     off();
     if (search.controller) search.controller.abort();
+    audioImport.destroy();
   };
 }

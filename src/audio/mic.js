@@ -1,6 +1,6 @@
-// Microphone capture. Streams raw mono Float32 blocks to subscribers.
-// Browser processing (echo cancellation, noise suppression, AGC) is turned
-// off: it smears attacks and pumps the level of short metallic notes.
+// Microphone (and browser tab) capture. Streams raw mono Float32 blocks to
+// subscribers. Browser processing (echo cancellation, noise suppression, AGC)
+// is turned off: it smears attacks and pumps the level of short metallic notes.
 
 const WORKLET_SRC = `
 class TptCapture extends AudioWorkletProcessor {
@@ -72,6 +72,63 @@ export async function openMic() {
     throw explain(err);
   }
 
+  const mic = await captureStream(stream);
+  const close = mic.close;
+  mic.close = () => {
+    close();
+    if (current === mic) current = null;
+  };
+  current = mic;
+  return mic;
+}
+
+export function closeMic() {
+  if (current) current.close();
+}
+
+export function micIsOpen() {
+  return current !== null;
+}
+
+/** True if this browser can record the sound of another tab. */
+export function canCaptureTab() {
+  return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)
+    && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+/**
+ * Record the sound of another browser tab (e.g. a video playing there). The
+ * browser asks which tab to share; "Also share tab audio" must be on.
+ * @returns {Promise<{sampleRate:number, subscribe:Function, onEnded:(fn:()=>void)=>void, close:()=>void}>}
+ */
+export async function openTabAudio() {
+  if (!canCaptureTab()) {
+    throw new MicError('unsupported', 'This browser can’t record another tab. Use Chrome or Edge on a computer, or record with the microphone.');
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true, // required; only the sound is used
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      selfBrowserSurface: 'exclude',
+      systemAudio: 'include',
+    });
+  } catch (err) {
+    if (err && err.name === 'NotAllowedError') throw new MicError('denied', 'Sharing was cancelled.');
+    throw explain(err);
+  }
+  const audio = stream.getAudioTracks();
+  if (!audio.length) {
+    stream.getTracks().forEach((t) => t.stop());
+    throw new MicError('no-audio', 'No sound was shared. Choose the tab with the video and turn on “Also share tab audio”.');
+  }
+  const cap = await captureStream(stream);
+  cap.onEnded = (fn) => audio[0].addEventListener('ended', fn, { once: true });
+  return cap;
+}
+
+/** Feed a MediaStream's sound through a capture worklet. */
+async function captureStream(stream) {
   const Ctx = window.AudioContext || window.webkitAudioContext;
   const ctx = new Ctx({ latencyHint: 'interactive' });
   if (ctx.state === 'suspended') await ctx.resume();
@@ -84,7 +141,7 @@ export async function openMic() {
   try {
     blobUrl = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
     await ctx.audioWorklet.addModule(blobUrl);
-    node = new AudioWorkletNode(ctx, 'tpt-capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
+    node = new AudioWorkletNode(ctx, 'tpt-capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' }); // stereo is mixed down
     node.port.onmessage = (e) => emit(e.data);
   } catch {
     // Older browsers: fall back to the deprecated ScriptProcessorNode.
@@ -99,7 +156,7 @@ export async function openMic() {
   node.connect(mute);
   mute.connect(ctx.destination);
 
-  const mic = {
+  return {
     sampleRate: ctx.sampleRate,
     context: ctx,
     subscribe(fn) {
@@ -112,17 +169,6 @@ export async function openMic() {
       stream.getTracks().forEach((t) => t.stop());
       ctx.close();
       if (blobUrl) URL.revokeObjectURL(blobUrl);
-      if (current === mic) current = null;
     },
   };
-  current = mic;
-  return mic;
-}
-
-export function closeMic() {
-  if (current) current.close();
-}
-
-export function micIsOpen() {
-  return current !== null;
 }

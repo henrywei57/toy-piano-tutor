@@ -78,6 +78,13 @@ export function renameProfile(id, name) {
   return saveProfile({ ...p, name: String(name).trim() || p.name });
 }
 
+/** One key at a time (false) or several keys at once (true). */
+export function setChords(id, on) {
+  const p = getProfile(id);
+  if (!p) return null;
+  return saveProfile({ ...p, chords: Boolean(on) });
+}
+
 export function duplicateProfile(id) {
   const p = getProfile(id);
   if (!p) return null;

@@ -29,8 +29,11 @@ export function createSheetView(container, { events, profile, song, labels }) {
   container.append(status, el);
 
   const keyMidi = profile.keys.map((k) => (k.freq ? freqToMidi(k.freq) : 60));
-  let current = { labels, now: -1, next: -1, done: 0 };
-  let byEvent = [];        // event index -> SVG elements
+  let current = { labels, now: -1, next: [], done: 0 };
+  // The notes of a chord share one symbol, so highlighting works per symbol.
+  let groups = [];         // { els: SVG elements, events: event indices }
+  let groupOf = [];        // event index -> index into groups, or -1
+  let marked = { now: -1, next: [] };
   let renderedWidth = 0;
   let destroyed = false;
   let timer = 0;
@@ -52,7 +55,7 @@ export function createSheetView(container, { events, profile, song, labels }) {
     // container's width, so a smaller staffwidth means bigger notes.
     const scale = width < 520 ? 0.95 : 1.2;
     const { abc, chars, approximate } = buildSheet(events, {
-      bpm: song.bpm, meter: song.meter, keyMidi, labels: current.labels, legato: song.source === 'midi',
+      bpm: song.bpm, meter: song.meter, keyMidi, labels: current.labels, legato: song.source === 'midi' || song.source === 'audio',
     });
     const tunes = renderAbc(paper, abc, {
       add_classes: true,
@@ -61,44 +64,62 @@ export function createSheetView(container, { events, profile, song, labels }) {
       paddingtop: 8, paddingbottom: 8, paddingleft: 6, paddingright: 6,
       wrap: { minSpacing: 1.8, maxSpacing: 2.8, preferredMeasuresPerLine: 4 },
     });
-    byEvent = mapElements(tunes[0], chars);
+    const byEvent = mapElements(tunes[0], chars);
+    groups = [];
+    groupOf = [];
+    const seen = new Map(); // first element -> group
+    byEvent.forEach((els, i) => {
+      if (!els.length) { groupOf[i] = -1; return; }
+      let g = seen.get(els[0]);
+      if (g == null) { g = groups.length; groups.push({ els, events: [] }); seen.set(els[0], g); }
+      groups[g].events.push(i);
+      groupOf[i] = g;
+    });
+    marked = { now: -1, next: [] };
     status.textContent = approximate
       ? 'This MIDI file was recorded by playing, not written note by note, so the rhythms here are only approximate. The notes and keys are right.'
       : '';
     status.hidden = !approximate;
-    const keep = current;
-    current = { ...keep, now: -1, next: -1, done: 0 };
-    update(keep, true);
+    update(current, true);
   }
 
   /**
-   * Highlight the note being played (watch mode) or the one to play next and
+   * Highlight the note being played (watch mode) or the notes to play next and
    * the ones already played (listen & wait).
-   * @param {{now?:number, next?:number, results?:(string|null)[], done?:number}} s
+   * @param {{now?:number, next?:number[], results?:(string|null)[], done?:number}} s
    */
   function update(s, force = false) {
-    const now = s.now ?? -1, next = s.next ?? -1, done = s.done ?? 0;
-    if (!force && now === current.now && next === current.next && done === current.done) return;
-    if (current.now !== now) {
-      mark(current.now, 'is-now', false);
-      mark(now, 'is-now', true);
-    }
-    if (current.next !== next) {
-      mark(current.next, 'is-next', false);
-      mark(next, 'is-next', true);
-    }
-    if (force || done !== current.done) {
-      byEvent.forEach((_, i) => mark(i, 'is-done', Boolean(s.results && s.results[i] === 'correct')));
-    }
-    if (force) { mark(now, 'is-now', true); mark(next, 'is-next', true); }
+    const now = s.now ?? -1, done = s.done ?? 0;
+    const next = Array.isArray(s.next) ? s.next : [];
+    const same = now === current.now && done === current.done
+      && next.length === current.next.length && next.every((x, i) => x === current.next[i]);
+    if (!force && same) return;
+    const doneChanged = done !== current.done;
     current = { ...current, now, next, done, results: s.results };
-    const focus = next >= 0 ? next : now;
-    if (focus >= 0 && byEvent[focus] && byEvent[focus][0]) keepInView(byEvent[focus][0]);
+    if (!groups.length) return;
+
+    const nowG = now >= 0 ? groupOf[now] ?? -1 : -1;
+    const nextG = [...new Set(next.map((i) => groupOf[i] ?? -1).filter((g) => g >= 0))];
+    if (force || marked.now !== nowG) {
+      mark(marked.now, 'is-now', false);
+      mark(nowG, 'is-now', true);
+    }
+    if (force || nextG.join() !== marked.next.join()) {
+      for (const g of marked.next) mark(g, 'is-next', false);
+      for (const g of nextG) mark(g, 'is-next', true);
+    }
+    marked = { now: nowG, next: nextG };
+    if (force || doneChanged) {
+      const res = s.results;
+      groups.forEach((g, gi) => mark(gi, 'is-done', Boolean(res) && g.events.every((i) => res[i] === 'correct')));
+    }
+    const focus = nextG.length ? nextG[0] : nowG;
+    if (focus >= 0) keepInView(groups[focus].els[0]);
   }
 
-  function mark(i, cls, on) {
-    if (i < 0 || !byEvent[i]) return;
-    for (const node of byEvent[i]) node.classList.toggle(cls, on);
+  function mark(g, cls, on) {
+    if (g < 0 || !groups[g]) return;
+    for (const node of groups[g].els) node.classList.toggle(cls, on);
   }
 
   // Scroll so the current line of music stays visible.

@@ -2,7 +2,7 @@
 
 import { midiToName } from '../audio/notes.js';
 
-const CHORD_WINDOW = 0.03; // notes starting within 30 ms count as simultaneous
+export const CHORD_WINDOW = 0.03; // notes starting within 30 ms count as simultaneous
 
 /** Sort, drop empty notes, round times, and shift so the first note starts at 0. */
 export function normalizeNotes(notes) {
@@ -48,6 +48,8 @@ export function isPolyphonic(notes) {
  * "Skyline" melody: the highest note at each moment.
  * - Of notes starting together, keep the highest.
  * - A lower note that starts under a still-sounding higher note is dropped.
+ *   One that starts just before the higher note ends (a legato overlap of up
+ *   to a quarter of its length, at most 120 ms) is the melody moving down.
  * - A note is cut short when the next kept note starts, so the result is monophonic.
  */
 export function melodyOnly(notes) {
@@ -67,13 +69,23 @@ export function melodyOnly(notes) {
     const prev = out[out.length - 1];
     if (prev) {
       const prevEnd = prev.startTime + prev.duration;
-      const stillSounding = prevEnd - start > CHORD_WINDOW;
+      const overlap = Math.min(0.12, Math.max(CHORD_WINDOW, 0.25 * prev.duration));
+      const stillSounding = prevEnd - start > overlap;
       if (stillSounding && top.midi < prev.midi) continue;
       if (prevEnd > start) prev.duration = Math.max(0.001, start - prev.startTime);
     }
     out.push({ midi: top.midi, startTime: start, duration: end - start });
   }
   return out;
+}
+
+/**
+ * The notes to teach on a piano: all of them if it can sound several keys at
+ * once (profile.chords), otherwise just the melody.
+ */
+export function notesForPiano(notes, profile) {
+  if (profile && profile.chords) return notes;
+  return isPolyphonic(notes) ? melodyOnly(notes) : notes;
 }
 
 /** Count, pitch range and length of a note list. */

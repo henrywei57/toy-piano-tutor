@@ -4,7 +4,7 @@ import { h, setChildren } from './dom.js';
 import { getActiveProfile } from '../profile/store.js';
 import { keyFlags } from '../profile/profile.js';
 import { getActiveSong } from '../song/songStore.js';
-import { noteStats, formatRange } from '../song/melody.js';
+import { noteStats, formatRange, notesForPiano, isPolyphonic } from '../song/melody.js';
 import { freqToNote, midiToName } from '../audio/notes.js';
 import {
   keysFromProfile, searchTranspositions, mapNotes, mappingSummary, explainFit, formatShift,
@@ -41,7 +41,10 @@ export function mapView(root) {
   const persist = () => saveMapping(profile.id, song.id, state);
   if (!settings.saved) persist();
 
-  const songStats = noteStats(song.notes);
+  // A piano that plays one key at a time gets the song's melody.
+  const notes = notesForPiano(song.notes, profile);
+  const reduced = notes !== song.notes;
+  const songStats = noteStats(notes);
   const keyNames = profile.keys.map((k) => (k.freq ? freqToNote(k.freq).name : ''));
   const flaggedKeys = keyFlags(profile).filter((f) => f.some((x) => x.code === 'not-rising' || x.code === 'big-jump')).length;
 
@@ -79,11 +82,11 @@ export function mapView(root) {
   let search = null;
 
   function refresh() {
-    search = searchTranspositions(song.notes, keys, { tolerance: state.tolerance });
+    search = searchTranspositions(notes, keys, { tolerance: state.tolerance });
     const current = search.results.find((r) => r.shift === state.shift) || search.results[0];
-    const mapped = mapNotes(song.notes, keys, state);
+    const mapped = mapNotes(notes, keys, state);
     const summary = mappingSummary(mapped);
-    const fit = explainFit(song.notes, keys, state);
+    const fit = explainFit(notes, keys, state);
     if (flaggedKeys) {
       fit.reasons.push(`${flaggedKeys} key${flaggedKeys === 1 ? ' is' : 's are'} flagged as a possible octave error in Calibrate. Fixing ${flaggedKeys === 1 ? 'it' : 'them'} may change the fit.`);
     }
@@ -187,6 +190,8 @@ export function mapView(root) {
           h('div', { class: 'muted small' }, 'Song'),
           h('div', { class: 'song-name' }, song.name),
           h('div', { class: 'muted small' }, `${songStats.count} notes · ${formatRange(songStats)}`),
+          reduced && h('div', { class: 'muted small' }, 'Melody only: this piano plays one key at a time.'),
+          !reduced && profile.chords && isPolyphonic(notes) && h('div', { class: 'muted small' }, 'With chords: this piano plays several keys at once.'),
           h('a', { class: 'small', href: '#/song' }, 'Change song'),
         ),
         h('div', null,

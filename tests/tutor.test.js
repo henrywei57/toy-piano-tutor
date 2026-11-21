@@ -121,6 +121,44 @@ describe('TutorEngine — listen and wait', () => {
   });
 });
 
+describe('TutorEngine — chords', () => {
+  // C major chord (C4 E4 G4) for 1 s, then D4.
+  const chordNotes = [
+    { midi: 60, startTime: 0, duration: 1 }, { midi: 64, startTime: 0.01, duration: 1 }, { midi: 67, startTime: 0, duration: 1 },
+    { midi: 62, startTime: 1, duration: 1 },
+  ];
+  const tl = buildTimeline(mapNotes(chordNotes, keys, { strategy: 'skip' }));
+
+  it('waits for every key of a chord, played together or one by one', () => {
+    const e = new TutorEngine(tl, { waitMode: true, leadIn: 0 });
+    e.advance(0);
+    expect(e.stepSize).toBe(3);
+    expect(e.expectedEvents.map((ev) => ev.key).sort()).toEqual([0, 2, 4]);
+    expect(e.strike(0, [2])).toBe('correct');     // C and E heard together
+    expect(e.expectedEvents.map((ev) => ev.key)).toEqual([4]);
+    expect(e.strike(0)).toBe('ignored');          // C still ringing: not a mistake
+    expect(e.strike(5)).toBe('wrong');
+    expect(e.strike(4)).toBe('correct');          // G: chord done
+    expect(e.expected.key).toBe(1);
+    expect(e.progress).toBe(3);
+  });
+
+  it('counts chord keys heard even when the pitch detector heard none', () => {
+    const e = new TutorEngine(tl, { waitMode: true, leadIn: 0 });
+    e.advance(0);
+    expect(e.strike(null, [0, 2, 4])).toBe('correct');
+    expect(e.expected.key).toBe(1);
+    expect(e.strike(null, [])).toBe('ignored');
+  });
+
+  it('plays a chord once when two of its notes land on the same key', () => {
+    const octave = [{ midi: 60, startTime: 0, duration: 1 }, { midi: 72, startTime: 0, duration: 2 }];
+    const one = [{ index: 0, midi: 60 }];
+    const t = buildTimeline(mapNotes(octave, one, { strategy: 'fold' }));
+    expect(t.map((ev) => [ev.key, ev.start, ev.end])).toEqual([[0, 0, 2]]);
+  });
+});
+
 describe('tutor strike recognition', () => {
   const sr = 48000;
   // A detuned white-key toy piano, C5..C7 (as in calibration).

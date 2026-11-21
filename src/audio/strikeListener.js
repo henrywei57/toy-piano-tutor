@@ -33,7 +33,8 @@ export function tutorListenOptions(keyFreqs) {
  * @param {object} handlers
  * @param {(state:'waiting'|'hearing'|'analyzing'|'cooldown')=>void} [handlers.onState]
  * @param {(levelDb:number, floorDb:number)=>void} [handlers.onLevel]
- * @param {(result:object)=>void} handlers.onResult   analyzeStrike() result
+ * @param {(result:object, samples:Float32Array)=>void} handlers.onResult
+ *        analyzeStrike() result, and the recorded strike
  * @param {object} [opts]  timing ({minMs, maxMs, quietMs, cooldownMs}) and
  *                         opts.analyze, passed to analyzeStrike()
  * @returns {{stop:()=>void, pause:()=>void, resume:()=>void}}
@@ -87,7 +88,7 @@ export function listenForStrikes(mic, handlers, opts = {}) {
       const result = analyzeStrike(take, sr, analyzeOpts);
       cooldownUntil = clock + cooldownLen;
       setState(paused ? 'waiting' : 'cooldown');
-      handlers.onResult(result);
+      handlers.onResult(result, take);
     }, 0);
   }
 

@@ -101,7 +101,8 @@ export function chooseClef(midis) {
  *                                  play notes a bit short; typed songs are exact)
  * @returns {{abc:string, chars:number[][], clef:string, approximate:boolean}}
  *   chars[i]: positions in `abc` of the symbols drawn for events[i] (a long
- *   note can be several tied symbols); empty if it couldn't be placed.
+ *   note can be several tied symbols; the notes of a chord share theirs);
+ *   empty if it couldn't be placed.
  *   approximate: many notes are off the sixteenth grid (a live recording), so
  *   the written rhythm is only a rough guide.
  */
@@ -135,13 +136,21 @@ export function buildSheet(events, opts) {
   events.forEach((ev, i) => {
     let s = grid(ev.start);
     let e = grid(ev.end);
+    if (e <= s) e = s + 1;
     const prev = items[items.length - 1];
     if (s < cursor) {
-      if (!prev || prev.type !== 'note' || s <= prev.pos) return; // two notes on one sixteenth: show the first
+      if (!prev || prev.type !== 'note' || s < prev.pos) return;
+      if (s === prev.pos) {
+        // Starts with the previous note: a chord.
+        const midi = midiOf(ev);
+        prev.events.push(i);
+        if (!prev.notes.some((n) => n.midi === midi)) prev.notes.push({ midi, label: labelFor(ev, midi, labels) });
+        if (e - s > prev.len) { prev.len = e - s; cursor = e; }
+        return;
+      }
       prev.len = s - prev.pos; // overlapping (legato): shorten the previous note
       cursor = s;
     }
-    if (e <= s) e = s + 1;
     let gap = s - cursor;
     if (gap > 0 && opts.legato && prev && prev.type === 'note') {
       // A note played a little short (common in MIDI files): close a small
@@ -151,13 +160,15 @@ export function buildSheet(events, opts) {
       else if (toBeat > 0 && toBeat < gap && toBeat <= prev.len) { prev.len += toBeat; cursor += toBeat; gap -= toBeat; }
     }
     if (gap > 0) items.push({ type: 'rest', pos: cursor, len: gap });
-    items.push({ type: 'note', pos: s, len: e - s, midi: midiOf(ev), label: labelFor(ev, midiOf(ev), labels), event: i });
+    items.push({ type: 'note', pos: s, len: e - s, notes: [{ midi: midiOf(ev), label: labelFor(ev, midiOf(ev), labels) }], events: [i] });
     cursor = e;
   });
 
-  // 2. Write them, split at bar lines and into writable note values.
+  // 2. Write them, split at bar lines and into writable note values. The
+  //    labels of a chord stack up in lyric lines, top note first.
   const chars = events.map(() => []);
-  const words = [];
+  const lines = Math.min(4, Math.max(1, ...items.map((it) => (it.notes ? it.notes.length : 0))));
+  const words = Array.from({ length: lines }, () => []);
   let body = '';
   let acc = new Map();     // accidentals in force in this bar: step -> '#'|'n'
   let lastBeamable = false;
@@ -179,11 +190,12 @@ export function buildSheet(events, opts) {
         if (it.type === 'rest') {
           body += 'z' + lenText(len);
         } else {
-          chars[it.event].push(body.length);
-          body += pitchText(it.midi, shift, first, acc) + lenText(len);
+          for (const i of it.events) chars[i].push(body.length);
+          body += chordText(it.notes, shift, first, acc) + lenText(len);
           const tiedOn = left - len > 0;
           if (tiedOn) body += '-';
-          words.push(first ? it.label : '*');
+          const top = [...it.notes].sort((a, b) => b.midi - a.midi);
+          words.forEach((line, l) => line.push(first && top[l] ? top[l].label : '*'));
         }
         lastBeamable = beamable;
         first = false;
@@ -200,7 +212,8 @@ export function buildSheet(events, opts) {
   body = body.replace(/\s*\|?\s*$/, '') + ' |]';
 
   const header = `X:1\nM:${meter.num}/${meter.den}\nL:1/16\nK:C clef=${clef}\n`;
-  const abc = header + body.trim() + '\n' + (labels !== 'none' && words.length ? 'w: ' + words.join(' ') + '\n' : '');
+  const lyrics = labels !== 'none' && words[0].length ? words.map((line) => 'w: ' + line.join(' ') + '\n').join('') : '';
+  const abc = header + body.trim() + '\n' + lyrics;
   // chars were measured within body (after a leading trim of one space); shift to absolute.
   const lead = body.length - body.trimStart().length;
   const offset = header.length - lead;
@@ -244,6 +257,13 @@ export function splitRest(rel, n, compound = false) {
 
 function lenText(len) {
   return len === 1 ? '' : String(len);
+}
+
+/** One note, or a chord of notes low to high: [CEG]. */
+function chordText(notes, shift, first, acc) {
+  if (notes.length === 1) return pitchText(notes[0].midi, shift, first, acc);
+  const low = [...notes].sort((a, b) => a.midi - b.midi);
+  return '[' + low.map((n) => pitchText(n.midi, shift, first, acc)).join('') + ']';
 }
 
 /** ABC pitch with an accidental only where the bar needs one. */

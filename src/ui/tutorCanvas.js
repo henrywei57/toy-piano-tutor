@@ -60,7 +60,7 @@ export function createTutorCanvas(container, profile, opts = {}) {
    * @param {(string|null)[]} [f.results]
    * @param {number} f.lookahead       song seconds from top to hit line
    * @param {Map<number,string>} f.lit key index -> 'play'|'expected'|'correct'|'wrong'
-   * @param {number} [f.waitingIdx]    event index waiting at the line (wait mode)
+   * @param {Set<number>} [f.waiting]  event indices waiting at the line (wait mode)
    * @param {[number, number]} f.usedRange  lowest/highest key index the song uses
    * @returns {{lo:number, hi:number, zoomed:boolean}}
    */
@@ -111,7 +111,7 @@ export function createTutorCanvas(container, profile, opts = {}) {
         : ev.status === 'folded' ? colors.warn
           : ev.status === 'nearest' ? colors.error
             : colors.accent;
-      ctx.globalAlpha = idx === f.waitingIdx ? pulse : result === 'correct' ? 0.55 : 0.95;
+      ctx.globalAlpha = f.waiting && f.waiting.has(idx) ? pulse : result === 'correct' ? 0.55 : 0.95;
       const x = (ev.key - lo) * kw;
       rr(x + Math.min(3, kw * 0.1), top, kw - 2 * Math.min(3, kw * 0.1), Math.max(2, bottom - top), Math.min(6, kw / 4));
       ctx.globalAlpha = 1;
