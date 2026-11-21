@@ -117,7 +117,7 @@ function send(res, status, body, headers = {}) {
  * GET /ping          -> { app, version, ytdlp }
  * GET /audio?id=…    -> the video's audio file (X-Title: its title, URI-encoded)
  */
-export function createHelper({ ytdlp, origins = [], log = console.log } = {}) {
+export function createHelper({ ytdlp, origins = [], log = console.log, tmpRoot = os.tmpdir() } = {}) {
   let running = null; // the download in progress; a new one replaces it
   return http.createServer(async (req, res) => {
     const origin = req.headers.origin;
@@ -154,7 +154,7 @@ export function createHelper({ ytdlp, origins = [], log = console.log } = {}) {
     const job = new AbortController();
     running = job;
     res.on('close', () => { if (!res.writableFinished) job.abort(); }); // the app cancelled
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'tpt-youtube-'));
+    const dir = await mkdtemp(path.join(tmpRoot, 'tpt-youtube-'));
     try {
       log(`Getting the sound of ${id}…`);
       const r = await run(ytdlp.cmd, [...ytdlp.pre, ...ytDlpArgs(id, dir)], { signal: job.signal, timeout: 5 * 60 * 1000 });

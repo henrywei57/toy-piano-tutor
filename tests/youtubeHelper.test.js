@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHelper, originAllowed, hostAllowed, ytDlpArgs, explainFailure } from '../tools/youtube-helper.mjs';
 import { findHelper, downloadAudio, HELPER_URL } from '../src/song/youtubeHelper.js';
@@ -68,15 +69,26 @@ function get(path, { origin = 'http://localhost:5174', host, method = 'GET', abo
   });
 }
 
-const tempDirs = () => fs.readdirSync(os.tmpdir()).filter((d) => d.startsWith('tpt-youtube-')).length;
+// The helper's downloads go into folders under tmpRoot; each must be gone soon after.
+const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tpt-helper-test-'));
+async function leftOver() {
+  for (let i = 0; i < 40; i++) {
+    if (!fs.readdirSync(tmpRoot).length) return 0;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return fs.readdirSync(tmpRoot).length;
+}
 
 describe('the helper', () => {
   beforeAll(async () => {
-    server = createHelper({ ytdlp: fake, log: () => {} });
+    server = createHelper({ ytdlp: fake, log: () => {}, tmpRoot });
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
     port = server.address().port;
   });
-  afterAll(() => new Promise((r) => server.close(r)));
+  afterAll(async () => {
+    await new Promise((r) => server.close(r));
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
 
   it('says hello to the app, and no one else', async () => {
     const ok = await get('/ping');
@@ -94,15 +106,13 @@ describe('the helper', () => {
   });
 
   it('sends the downloaded sound with its title, and keeps nothing', async () => {
-    const before = tempDirs();
     const r = await get('/audio?id=goodvideo01');
     expect(r.status).toBe(200);
     expect(r.body).toBe('fake audio goodvideo01');
     expect(r.headers['content-type']).toBe('audio/mp4');
     expect(decodeURIComponent(r.headers['x-title'])).toBe('Für Elise – Piano (Official Video)');
     expect(r.headers['access-control-expose-headers']).toMatch(/X-Title/);
-    await new Promise((res) => setTimeout(res, 300)); // deleted right after sending
-    expect(tempDirs()).toBe(before);
+    expect(await leftOver()).toBe(0);
   });
 
   it('explains what went wrong', async () => {
@@ -117,11 +127,9 @@ describe('the helper', () => {
   });
 
   it('stops the download when the app cancels', async () => {
-    const before = tempDirs();
     const r = await get('/audio?id=slowvideo01', { abortAfter: 300 });
     expect(r.aborted).toBe(true);
-    await new Promise((res) => setTimeout(res, 800));
-    expect(tempDirs()).toBe(before);
+    expect(await leftOver()).toBe(0);
   });
 
   it('says so when yt-dlp is missing', async () => {
