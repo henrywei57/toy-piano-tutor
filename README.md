@@ -14,6 +14,8 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
 | 2. Song import (MIDI, typed notes) | ✅ done |
 | 3. Song-to-piano mapping (transposition search) | ✅ done |
 | 4. Tutor mode (falling notes, listen-and-wait) | ✅ done |
+| Song search (built-in, saved, and online MIDI files) | ✅ done |
+| Sheet music view (read the notes on a staff) | ✅ done |
 
 ## Using it
 
@@ -24,6 +26,15 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
    - **Edit** lets you type a frequency (`523.4`) or a note (`C5`, `F#4`, `Bb5-20`) yourself.
    - **Skip** marks a broken or missing key so it's never used.
 4. **Export** a profile to back it up or move it to another device, and **Import** it there.
+
+### Finding songs
+
+Type a song name in **Songs → Find a song** and press **Search**:
+
+- **Built-in and your songs** that match are listed first. Accents and capitals don't matter, so `fur elise` finds *Für Elise*. **Play** opens the song straight in the tutor.
+- **Online MIDI files** come from [bitmidi.com](https://bitmidi.com), a public archive of MIDI files shared by its users. **Open** downloads one into the MIDI importer below. Pick the track with the melody, then **Save and play**. Quality varies: some files have the melody on its own track, some are full arrangements. **More results** loads the next page.
+
+Only your search words are sent to bitmidi.com, and online search needs an internet connection. Everything else works offline.
 
 ### Adding songs
 
@@ -41,7 +52,8 @@ To add your own, open **Songs → Add a song**. The song you save becomes the *a
   | `C4/4.` | dotted (1.5× as long) |
   | `C#4`, `Db4`, `bb3` | sharps and flats; lowercase is fine |
   | `R`, `R/2` | rest |
-  | `\|` `,` | ignored, so bar lines can be written in |
+  | `\|` | bar line: sets where bars go in the sheet music (a short first bar is a pickup) |
+  | `,` | ignored |
 
   Set the tempo in BPM. Mistakes are listed with their position (e.g. *Note 16 "H4": Not a note name*).
 
@@ -66,7 +78,9 @@ Settings are remembered per piano and song, and the tutor uses them.
 
 ### Playing (tutor)
 
-The **Play** screen draws *your* keys along the bottom, each labelled with its number and the note it really plays. The song's notes fall down onto them. The number on each falling note is the key to press. Colours match the Map screen: pink is on a key, amber is moved an octave, red is the nearest key.
+The **Play** screen has two views. Switch between them at the top right.
+
+**Falling notes** draws *your* keys along the bottom, each labelled with its number and the note it really plays. The song's notes fall down onto them. The number on each falling note is the key to press. Colours match the Map screen: pink is on a key, amber is moved an octave, red is the nearest key.
 
 - **Play / Pause** (or the space bar) and **Restart**.
 - **Tempo** from 25% to 150%. The label shows the resulting BPM.
@@ -79,6 +93,16 @@ The **Play** screen draws *your* keys along the bottom, each labelled with its n
   - Sound and metronome are switched off in this mode so the microphone only hears your piano.
 
 On a narrow phone screen with many keys, the keyboard zooms to the keys the song uses and says so. Turn the phone sideways to see them all.
+
+**Sheet music** shows the same notes on a staff, for learning to read music. Your keyboard stays underneath.
+
+- **Under each note:** your **key numbers**, the **note names** (`E5`), or **nothing** for reading practice.
+- The note being played turns pink and the sheet scrolls along. In Listen & wait, the note to play next pulses and the ones you've played turn green.
+- The staff shows the notes **your keys really play**, after the Map screen's transposition and octave folding. A high toy piano gets a treble clef with a small **8** above it (it sounds an octave higher than written), so the notes sit on the staff instead of on stacks of ledger lines.
+- Bar lines come from the song's time signature and pickup. Built-in songs have theirs, MIDI files bring theirs, and for typed songs the app reads your `|` bar lines.
+- Some MIDI files were recorded by someone playing rather than written note by note. Their rhythms can't be written exactly, so the sheet says the rhythms are approximate. The notes and keys are still right.
+
+The engraving is done by [abcjs](https://www.abcjs.net/) (MIT licence). It loads the first time you open sheet music, about 130 KB, and is then cached for offline use.
 
 ### How pitch detection works
 
@@ -135,11 +159,14 @@ src/
             synth.js (playback tones + metronome click)
   profile/  profile.js (model, octave-error flags), store.js (localStorage, export/import)
   song/     notation.js (typed notes), midi.js (@tonejs/midi import), melody.js (melody only,
-            polyphony check, stats), library.js (built-in songs), songStore.js (saved songs)
+            polyphony check, stats), library.js (built-in songs), songStore.js (saved songs),
+            search.js (song search + bitmidi.com), sheet.js (notes -> ABC sheet music: bars,
+            ties, beams, accidentals, clef choice)
   mapping/  transpose.js (transposition search, note mapping, fit explanation),
             mappingStore.js (settings per piano + song)
   ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js, mapView.js,
             tutorView.js (Play screen), tutorCanvas.js (falling notes + keys),
+            sheetView.js (sheet music with abcjs, current-note highlight),
             tutorEngine.js (song clock, listen-and-wait, scoring; no DOM)
   main.js   hash router + service worker registration
 public/     manifest.webmanifest, sw.js, icons/

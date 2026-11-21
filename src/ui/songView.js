@@ -1,16 +1,30 @@
-// Songs screen: saved songs, plus "Add a song" from a MIDI file or typed notes.
+// Songs screen: search (built-in, saved and online songs), saved songs, plus
+// "Add a song" from a MIDI file or typed notes.
 
 import { h, toast, setChildren } from './dom.js';
 import { parseMidi } from '../song/midi.js';
 import { parseNotation } from '../song/notation.js';
 import { melodyOnly, noteStats, formatRange, formatDuration } from '../song/melody.js';
+import { meterFromText, barBeats } from '../song/sheet.js';
+import { searchLocal, searchOnline, downloadMidi } from '../song/search.js';
 import * as songs from '../song/songStore.js';
 import { getActiveProfile } from '../profile/store.js';
 import { keysFromProfile, searchTranspositions } from '../mapping/transpose.js';
 
 const EXAMPLE = 'C4 C4 G4 G4 A4 A4 G4/2 | F4 F4 E4 E4 D4 D4 C4/2';
 
-export function songView(root) {
+export function songView(root, { navigate } = {}) {
+  const search = {
+    query: '',             // last searched text
+    local: [],             // matching built-in / saved songs
+    online: [],            // bitmidi results so far
+    page: 0,
+    pages: 0,
+    loading: false,
+    error: '',
+    opening: null,         // id of the online result being downloaded
+    controller: null,
+  };
   const state = {
     mode: 'midi',          // 'midi' | 'text'
     // MIDI
@@ -26,53 +40,152 @@ export function songView(root) {
     textName: '',
   };
 
+  const searchEl = h('div', { class: 'card stack' });
   const listEl = h('div');
   const addEl = h('div', { class: 'card stack' });
+
+  // ---- song rows ----------------------------------------------------------
+  function rowContext() {
+    const profile = getActiveProfile();
+    return { activeId: songs.getActiveSongId(), keys: profile ? keysFromProfile(profile) : [] };
+  }
+
+  function play(id) {
+    songs.setActiveSongId(id);
+    if (navigate) navigate('#/play');
+  }
+
+  function songRow(s, { activeId, keys }) {
+    const st = noteStats(s.notes);
+    const isActive = s.id === activeId;
+    const deletable = s.source !== 'library';
+    const kind = s.source === 'midi' ? ' · MIDI' : s.source === 'text' ? ' · typed' : '';
+    // "fits 93%" for the active piano, at its best transposition.
+    const fit = keys.length ? ` · fits your piano ${Math.round(searchTranspositions(s.notes, keys).best.fraction * 100)}%` : '';
+    return h('li', { class: 'song-row' + (isActive ? ' active' : '') },
+      h('div', { class: 'song-info' },
+        h('div', { class: 'song-name' }, s.name, isActive && h('span', { class: 'badge' }, 'Active')),
+        h('div', { class: 'muted small' },
+          `${st.count} notes · ${formatRange(st)} · ${formatDuration(st.seconds)}${kind}${fit}`),
+      ),
+      h('div', { class: 'row-actions' },
+        h('button', { class: 'btn small primary', onClick: () => play(s.id) }, 'Play'),
+        !isActive && h('button', { class: 'btn small', onClick: () => songs.setActiveSongId(s.id) }, 'Use'),
+        deletable && h('button', {
+          class: 'btn small danger',
+          onClick: () => { if (confirm(`Delete “${s.name}”?`)) songs.deleteSong(s.id); },
+        }, 'Delete'),
+      ),
+    );
+  }
+
+  // ---- search -------------------------------------------------------------
+  const searchInput = h('input', {
+    type: 'search', id: 'song-search', placeholder: 'Song name, e.g. Jingle Bells', autocomplete: 'off', enterKeyHint: 'search',
+  });
+  const searchForm = h('form', {
+    class: 'search-row', role: 'search',
+    onSubmit: (e) => { e.preventDefault(); runSearch(searchInput.value); },
+  }, searchInput, h('button', { class: 'btn primary', type: 'submit' }, 'Search'));
+
+  async function runSearch(text, page = 0) {
+    const query = text.trim();
+    if (search.controller) search.controller.abort();
+    if (page === 0) {
+      search.query = query;
+      search.local = query ? searchLocal(query, [...songs.listSongs(), ...songs.listLibrary()]) : [];
+      search.online = [];
+      search.pages = 0;
+    }
+    search.error = '';
+    if (!query) { search.loading = false; renderSearch(); return; }
+    search.loading = true;
+    renderSearch();
+    const controller = new AbortController();
+    search.controller = controller;
+    try {
+      const r = await searchOnline(query, page, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      search.online = [...search.online, ...r.results];
+      search.page = page;
+      search.pages = r.pages;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      search.error = err.message;
+    }
+    search.loading = false;
+    renderSearch();
+  }
+
+  async function openOnline(result) {
+    search.opening = result.id;
+    renderSearch();
+    try {
+      const data = await downloadMidi(result);
+      state.mode = 'midi';
+      loadMidiData(data, result.file || result.title + '.mid', result.title, 'bitmidi.com');
+      addEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    search.opening = null;
+    renderSearch();
+  }
+
+  function renderSearch() {
+    const parts = [h('h2', null, 'Find a song'), searchForm];
+    if (search.query) {
+      const ctx = rowContext();
+      parts.push(
+        h('h3', null, 'Built-in and your songs'),
+        search.local.length
+          ? h('ul', { class: 'song-list' }, search.local.map((s) => songRow(s, ctx)))
+          : h('p', { class: 'muted small' }, `No saved or built-in song matches “${search.query}”.`),
+        h('h3', null, 'Online MIDI files'),
+      );
+      if (search.online.length) {
+        parts.push(h('ul', { class: 'song-list' }, search.online.map((r) => h('li', { class: 'song-row' },
+          h('div', { class: 'song-info' },
+            h('div', { class: 'song-name' }, r.title),
+            h('div', { class: 'muted small' }, 'MIDI file · bitmidi.com'),
+          ),
+          h('div', { class: 'row-actions' },
+            h('button', {
+              class: 'btn small', disabled: search.opening != null,
+              onClick: () => openOnline(r),
+            }, search.opening === r.id ? 'Opening…' : 'Open'),
+          ),
+        ))));
+      }
+      if (search.loading) parts.push(h('p', { class: 'muted small' }, 'Searching bitmidi.com…'));
+      else if (search.error) parts.push(h('div', { class: 'msg error' }, search.error));
+      else if (!search.online.length) parts.push(h('p', { class: 'muted small' }, `No MIDI files found for “${search.query}”.`));
+      else if (search.page + 1 < search.pages) {
+        parts.push(h('button', { class: 'btn', onClick: () => runSearch(search.query, search.page + 1) }, 'More results'));
+      }
+      parts.push(h('p', { class: 'muted small' },
+        'Online results are MIDI files shared by people on bitmidi.com, so quality varies. Open one, pick the track with the melody, and save it.'));
+    }
+    setChildren(searchEl, parts);
+  }
 
   // ---- song lists ---------------------------------------------------------
   function renderList() {
     const mine = songs.listSongs();
-    const activeId = songs.getActiveSongId();
-    const profile = getActiveProfile();
-    const keys = profile ? keysFromProfile(profile) : [];
-
-    // "fits 93%" for the active piano, at its best transposition.
-    const fitText = (s) => {
-      if (!keys.length) return '';
-      const pct = Math.round(searchTranspositions(s.notes, keys).best.fraction * 100);
-      return ` · fits your piano ${pct}%`;
-    };
-
-    const row = (s, deletable) => {
-      const st = noteStats(s.notes);
-      const isActive = s.id === activeId;
-      const kind = s.source === 'midi' ? ' · MIDI' : s.source === 'text' ? ' · typed' : '';
-      return h('li', { class: 'song-row' + (isActive ? ' active' : '') },
-        h('div', { class: 'song-info' },
-          h('div', { class: 'song-name' }, s.name, isActive && h('span', { class: 'badge' }, 'Active')),
-          h('div', { class: 'muted small' },
-            `${st.count} notes · ${formatRange(st)} · ${formatDuration(st.seconds)}${kind}${fitText(s)}`),
-        ),
-        h('div', { class: 'row-actions' },
-          !isActive && h('button', { class: 'btn small', onClick: () => songs.setActiveSongId(s.id) }, 'Use'),
-          deletable && h('button', {
-            class: 'btn small danger',
-            onClick: () => { if (confirm(`Delete “${s.name}”?`)) songs.deleteSong(s.id); },
-          }, 'Delete'),
-        ),
-      );
-    };
+    const ctx = rowContext();
+    const keys = ctx.keys;
+    const row = (s) => songRow(s, ctx);
 
     listEl.replaceChildren(
       h('div', { class: 'stack' },
         mine.length > 0 && h('div', { class: 'card stack' },
           h('h2', null, 'Your songs'),
-          h('ul', { class: 'song-list' }, mine.map((s) => row(s, true))),
+          h('ul', { class: 'song-list' }, mine.map(row)),
         ),
         h('div', { class: 'card stack' },
           h('h2', null, 'Built-in songs'),
           !keys.length && h('p', { class: 'muted small' }, 'Calibrate a piano to see how well each song fits it.'),
-          h('ul', { class: 'song-list' }, songs.listLibrary().map((s) => row(s, false))),
+          h('ul', { class: 'song-list' }, songs.listLibrary().map(row)),
         ),
       ),
     );
@@ -166,36 +279,55 @@ export function songView(root) {
           type: 'text', id: 'midi-name', value: state.midiName, maxLength: 80,
           onInput: (e) => { state.midiName = e.target.value; },
         }),
-        h('button', {
-          class: 'btn primary',
-          onClick: () => save({
-            name: state.midiName,
-            source: 'midi',
-            bpm: state.parsed.bpm,
-            notes,
-            origin: { file: state.fileName, track: track.name, melodyOnly: track.polyphonic && state.melodyOnly },
-          }),
-        }, 'Save song'),
       );
+      const saveMidi = (thenPlay) => {
+        const ok = save({
+          name: state.midiName,
+          source: 'midi',
+          bpm: state.parsed.bpm,
+          notes,
+          meter: midiMeter(state.parsed, notes),
+          origin: { file: state.fileName, track: track.name, melodyOnly: track.polyphonic && state.melodyOnly, ...(state.from ? { from: state.from } : {}) },
+        });
+        if (ok && thenPlay && navigate) navigate('#/play');
+      };
+      parts.push(h('div', { class: 'row-actions' },
+        h('button', { class: 'btn primary', onClick: () => saveMidi(true) }, 'Save and play'),
+        h('button', { class: 'btn', onClick: () => saveMidi(false) }, 'Save song'),
+      ));
     }
     return h('div', { class: 'stack' }, parts);
   }
 
   async function loadMidiFile(file) {
-    state.fileName = file.name;
+    loadMidiData(new Uint8Array(await file.arrayBuffer()), file.name, '', '');
+  }
+
+  /** Show the track picker for MIDI data (from a file, or downloaded from a search). */
+  function loadMidiData(data, fileName, nameHint, from) {
+    state.fileName = fileName;
+    state.from = from;
     state.midiError = '';
     state.parsed = null;
     state.trackIdx = -1;
     try {
-      const parsed = parseMidi(new Uint8Array(await file.arrayBuffer()));
+      const parsed = parseMidi(data);
       state.parsed = parsed;
       state.trackIdx = parsed.suggested >= 0 ? parsed.suggested : parsed.tracks.findIndex((t) => !t.percussion);
       state.melodyOnly = true;
-      state.midiName = parsed.name || file.name.replace(/\.(mid|midi)$/i, '');
+      state.midiName = nameHint || parsed.name || fileName.replace(/\.(mid|midi|kar)$/i, '');
     } catch (err) {
       state.midiError = err.message;
     }
     renderAdd();
+  }
+
+  /** Time signature, and where in its bar the melody's first note falls. */
+  function midiMeter(parsed, notes) {
+    const first = Math.min(...notes.map((n) => n.startTime));
+    const len = barBeats(parsed.meter);
+    const beat = parsed.beatAt(first);
+    return { ...parsed.meter, offset: Math.round((((beat % len) + len) % len) * 1000) / 1000 };
   }
 
   function textPanel() {
@@ -240,7 +372,8 @@ export function songView(root) {
     function saveTyped() {
       const { notes, errors } = parseNotation(state.text, { bpm: state.bpm });
       if (errors.length || !notes.length) return;
-      if (save({ name: state.textName, source: 'text', bpm: state.bpm, notes, text: state.text.trim() })) {
+      const meter = meterFromText(state.text) || undefined;
+      if (save({ name: state.textName, source: 'text', bpm: state.bpm, notes, text: state.text.trim(), meter })) {
         state.text = '';
         state.textName = '';
         renderAdd();
@@ -269,7 +402,7 @@ export function songView(root) {
       h('div', { class: 'muted small' },
         'Quarter notes by default. Add ', h('code', null, '/2'), ' half, ', h('code', null, '/8'), ' eighth, ',
         h('code', null, '/1'), ' whole; ', h('code', null, '.'), ' for dotted (', h('code', null, 'D4/4.'), '); ',
-        h('code', null, 'R'), ' for a rest (', h('code', null, 'R/2'), '). Bar lines ', h('code', null, '|'), ' are ignored.'),
+        h('code', null, 'R'), ' for a rest (', h('code', null, 'R/2'), '). Bar lines ', h('code', null, '|'), ' set where the bars go in the sheet music.'),
       h('label', { for: 'notes-bpm' }, 'Tempo (beats per minute)'),
       bpmInput,
       preview,
@@ -299,12 +432,17 @@ export function songView(root) {
   root.replaceChildren(
     h('section', { class: 'stack' },
       h('h1', null, 'Songs'),
+      searchEl,
       listEl,
       addEl,
     ),
   );
+  renderSearch();
   renderList();
   renderAdd();
-  const off = songs.onSongsChange(renderList);
-  return () => off();
+  const off = songs.onSongsChange(() => { renderList(); if (search.query) renderSearch(); });
+  return () => {
+    off();
+    if (search.controller) search.controller.abort();
+  };
 }

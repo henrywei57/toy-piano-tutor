@@ -3,6 +3,7 @@
 
 import { h, setChildren } from './dom.js';
 import { createTutorCanvas } from './tutorCanvas.js';
+import { createSheetView } from './sheetView.js';
 import { createLevelMeter } from './levelMeter.js';
 import { getActiveProfile, getSettings, updateSettings } from '../profile/store.js';
 import { getActiveSong } from '../song/songStore.js';
@@ -51,18 +52,22 @@ export function tutorView(root) {
     return () => {};
   }
 
-  const saved = { tempo: 100, metronome: false, sound: true, ...(getSettings().tutor || {}) };
+  const saved = { tempo: 100, metronome: false, sound: true, view: 'fall', labels: 'keys', ...(getSettings().tutor || {}) };
   const state = {
     tempo: saved.tempo,       // percent
     metronome: saved.metronome,
     sound: saved.sound,
+    view: saved.view === 'sheet' ? 'sheet' : 'fall',
+    labels: ['keys', 'notes', 'none'].includes(saved.labels) ? saved.labels : 'keys',
     wait: false,
     playing: false,
     listen: 'off',            // 'off' | 'starting' | 'on'
     message: null,            // {kind, text}
     feedback: null,           // {kind, text}
   };
-  const persist = () => updateSettings({ tutor: { tempo: state.tempo, metronome: state.metronome, sound: state.sound } });
+  const persist = () => updateSettings({
+    tutor: { tempo: state.tempo, metronome: state.metronome, sound: state.sound, view: state.view, labels: state.labels },
+  });
 
   const usedRange = [Math.min(...events.map((e) => e.key)), Math.max(...events.map((e) => e.key))];
   const bpm = song.bpm > 0 ? song.bpm : 100;
@@ -74,9 +79,24 @@ export function tutorView(root) {
   const meter = createLevelMeter();
 
   // ---- DOM --------------------------------------------------------------
-  const stage = h('div', { class: 'tutor-stage' });
+  const fallWrap = h('div', { class: 'stage-fill' });
+  const sheetArea = h('div', { class: 'sheet-area' });
+  const keysWrap = h('div', { class: 'stage-keys' });
+  const sheetWrap = h('div', { class: 'stage-sheet' }, sheetArea, keysWrap);
   const overlay = h('div', { class: 'tutor-overlay', hidden: true });
-  stage.append(overlay);
+  const stage = h('div', { class: 'tutor-stage' }, fallWrap, sheetWrap, overlay);
+  const VIEWS = [['fall', 'Falling notes'], ['sheet', 'Sheet music']];
+  const viewButtons = VIEWS.map(([id, label]) => h('button', {
+    class: 'seg wide', onClick: () => setView(id),
+  }, label));
+  const LABELS = [['keys', 'Key numbers'], ['notes', 'Note names'], ['none', 'Nothing']];
+  const labelButtons = LABELS.map(([id, label]) => h('button', {
+    class: 'seg wide', onClick: () => { state.labels = id; persist(); if (sheet) sheet.setLabels(id); renderControls(); },
+  }, label));
+  const labelsRow = h('div', { class: 'stack tight' },
+    h('div', { class: 'label-like' }, 'Under each note'),
+    h('div', { class: 'segmented wrap', role: 'group', 'aria-label': 'Under each note' }, labelButtons),
+  );
   const zoomEl = h('div', { class: 'muted small', hidden: true });
   let zoomKey = '';
   const progressEl = h('span', { class: 'tutor-progress' });
@@ -106,6 +126,7 @@ export function tutorView(root) {
             `${profile.name} · ${formatShift(mapping.shift)}`,
             ' · ', h('a', { href: '#/map' }, 'Change fit')),
         ),
+        h('div', { class: 'segmented', role: 'group', 'aria-label': 'View' }, viewButtons),
       ),
       stage,
       h('div', { class: 'tutor-status' }, progressEl, feedbackEl),
@@ -115,13 +136,25 @@ export function tutorView(root) {
         h('label', { for: 'tempo' }, 'Tempo ', tempoValue),
         tempoInput,
         h('div', { class: 'row-actions' }, toggles.metronome, toggles.sound, toggles.wait),
+        labelsRow,
         noteEl,
         meterRow,
         messageEl,
       ),
     ),
   );
-  const canvas = createTutorCanvas(stage, profile);
+  const canvas = createTutorCanvas(fallWrap, profile);
+  const keysCanvas = createTutorCanvas(keysWrap, profile, { keysOnly: true });
+  let sheet = null;
+
+  function setView(id) {
+    state.view = id;
+    persist();
+    if (id === 'sheet' && !sheet) {
+      sheet = createSheetView(sheetArea, { events, profile, song, labels: state.labels });
+    }
+    renderControls();
+  }
 
   // ---- playback ---------------------------------------------------------
   function togglePlay() {
@@ -245,7 +278,7 @@ export function tutorView(root) {
       if (engine.finished) finish();
       if (crossed.length || engine.waiting) renderStatus();
     }
-    const view = canvas.draw({
+    const frameInfo = {
       time: engine.time,
       events,
       results: engine.results,
@@ -253,7 +286,13 @@ export function tutorView(root) {
       lit: litKeys(now),
       waitingIdx: engine.waiting ? engine.next : -1,
       usedRange,
-    });
+    };
+    const view = (state.view === 'sheet' ? keysCanvas : canvas).draw(frameInfo);
+    if (sheet && state.view === 'sheet') {
+      sheet.update(state.wait
+        ? { next: engine.next < events.length ? engine.next : -1, results: engine.results, done: engine.correct }
+        : { now: engine.cursor > 0 && !engine.finished ? engine.cursor - 1 : -1 });
+    }
     const portrait = window.innerHeight > window.innerWidth;
     const z = view.zoomed ? `${view.lo}-${view.hi}-${portrait}` : '';
     if (z !== zoomKey) {
@@ -327,7 +366,22 @@ export function tutorView(root) {
     toggles.wait.textContent = state.listen === 'starting' ? 'Starting mic…' : 'Listen & wait';
     noteEl.textContent = state.wait
       ? 'The song waits for you: play each note on your piano and it moves on when it hears the right key. Sound and metronome are off so the mic only hears your piano.'
-      : 'Watch the notes fall onto your keys. Turn on “Listen & wait” to play along with the microphone.';
+      : state.view === 'sheet'
+        ? 'Read the notes on the staff. The note being played turns pink, and your keys light up below. Turn on “Listen & wait” to play along with the microphone.'
+        : 'Watch the notes fall onto your keys. Turn on “Listen & wait” to play along with the microphone.';
+    viewButtons.forEach((b, i) => {
+      const on = VIEWS[i][0] === state.view;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    labelButtons.forEach((b, i) => {
+      const on = LABELS[i][0] === state.labels;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    fallWrap.hidden = state.view !== 'fall';
+    sheetWrap.hidden = state.view !== 'sheet';
+    labelsRow.hidden = state.view !== 'sheet';
     meterRow.hidden = state.listen !== 'on';
     setChildren(messageEl, state.message && h('div', { class: 'msg ' + state.message.kind }, state.message.text));
     renderStatus();
@@ -342,6 +396,7 @@ export function tutorView(root) {
   }
   document.addEventListener('keydown', onKey);
 
+  setView(state.view);
   restart();
 
   return () => {
@@ -349,6 +404,8 @@ export function tutorView(root) {
     document.removeEventListener('keydown', onKey);
     stopListening();
     canvas.destroy();
+    keysCanvas.destroy();
+    if (sheet) sheet.destroy();
     closeAudio();
   };
 }

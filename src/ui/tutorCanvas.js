@@ -6,7 +6,13 @@ import { freqToNote } from '../audio/notes.js';
 
 const MIN_KEY_PX = 26; // narrower than this and we zoom to the song's keys
 
-export function createTutorCanvas(container, profile) {
+/**
+ * @param {HTMLElement} container  the canvas fills it
+ * @param {object} profile
+ * @param {{keysOnly?: boolean}} [opts]  keysOnly: just the keyboard (under the sheet music)
+ */
+export function createTutorCanvas(container, profile, opts = {}) {
+  const keysOnly = Boolean(opts.keysOnly);
   const canvas = h('canvas', { class: 'tutor-canvas', 'aria-hidden': 'true' });
   container.prepend(canvas);
   const ctx = canvas.getContext('2d');
@@ -68,16 +74,18 @@ export function createTutorCanvas(container, profile) {
     }
     const count = hi - lo + 1;
     const kw = W / count;
-    const kbH = Math.max(56, Math.min(120, H * 0.22));
+    const kbH = keysOnly ? H - 2 : Math.max(56, Math.min(120, H * 0.22));
     const hitY = H - kbH;
     const pps = hitY / f.lookahead;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
 
     // Lanes
-    for (let k = lo; k <= hi; k++) {
+    for (let k = lo; !keysOnly && k <= hi; k++) {
       const x = (k - lo) * kw;
       if ((k - lo) % 2) {
         ctx.fillStyle = colors.line;
@@ -88,10 +96,8 @@ export function createTutorCanvas(container, profile) {
     }
 
     // Falling notes
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 160);
-    f.events.forEach((ev, idx) => {
+    if (!keysOnly) f.events.forEach((ev, idx) => {
       if (ev.key < lo || ev.key > hi) return;
       if (ev.end < f.time - 0.05 || ev.start > f.time + f.lookahead) return;
       let yBottom = hitY - (ev.start - f.time) * pps;
@@ -117,8 +123,10 @@ export function createTutorCanvas(container, profile) {
     });
 
     // Hit line
-    ctx.fillStyle = colors.accent;
-    ctx.fillRect(0, hitY - 2, W, 2);
+    if (!keysOnly) {
+      ctx.fillStyle = colors.accent;
+      ctx.fillRect(0, hitY - 2, W, 2);
+    }
 
     // Keys
     for (let k = lo; k <= hi; k++) {

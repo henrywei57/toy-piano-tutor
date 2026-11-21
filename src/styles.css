@@ -113,7 +113,7 @@ main {
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 label { font-size: 0.9rem; color: var(--muted); margin-bottom: -6px; }
-input[type="text"], input[type="number"] {
+input[type="text"], input[type="number"], input[type="search"] {
   font: inherit;
   width: 100%;
   padding: 10px 12px;
@@ -508,3 +508,24 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   .tutor-stage { height: calc(100dvh - var(--topbar-h) - 70px); min-height: 200px; }
   .tutor-head .muted { display: none; }
 }
+
+/* ---- song search ------------------------------------------------------ */
+h3 { font-size: 0.95rem; margin: 4px 0 0; }
+.search-row { display: flex; gap: 8px; }
+.search-row input { flex: 1; min-width: 0; }
+.segmented.wrap { flex-wrap: wrap; }
+.stack.tight { gap: 8px; }
+
+/* ---- sheet music (Play) ---------------------------------------------- */
+.tutor-head { flex-wrap: wrap; }
+.stage-fill, .stage-sheet { position: absolute; inset: 0; }
+.stage-sheet { display: flex; flex-direction: column; background: var(--surface); }
+.sheet-area { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.sheet { flex: 1; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; color: var(--text); overscroll-behavior: contain; }
+.sheet svg { display: block; }
+.sheet-status { padding: 12px 14px; }
+.stage-keys { position: relative; flex: none; height: clamp(56px, 20%, 96px); border-top: 1px solid var(--line); }
+.sheet .is-now { color: var(--accent); }
+.sheet .is-done { color: var(--ok); }
+.sheet .is-next { color: var(--accent); animation: pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .sheet .is-next { animation: none; } }

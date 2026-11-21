@@ -6,7 +6,10 @@ import { isPolyphonic, noteStats } from './melody.js';
 
 /**
  * @param {ArrayBuffer|Uint8Array} data  contents of a .mid file
- * @returns {{name:string, bpm:number, tracks:object[], suggested:number}}
+ * @returns {{name:string, bpm:number, tracks:object[], suggested:number,
+ *            meter:{num:number, den:number}, beatAt:(seconds:number)=>number}}
+ *   meter: the first time signature (4/4 if none); beatAt: quarter notes from
+ *   the start of the file at a time, for finding where bars fall
  *   tracks: [{ index, name, instrument, channel, percussion, notes, stats, polyphonic }]
  *   suggested: index into tracks of the likely melody track (-1 if none)
  */
@@ -37,7 +40,11 @@ export function parseMidi(data) {
   if (!tracks.length) throw new Error('No notes found in that MIDI file.');
 
   const bpm = midi.header.tempos.length ? Math.round(midi.header.tempos[0].bpm * 100) / 100 : 120;
-  return { name: (midi.name || '').trim(), bpm, tracks, suggested: suggestMelodyTrack(tracks) };
+  const ts = midi.header.timeSignatures.length ? midi.header.timeSignatures[0].timeSignature : null;
+  const meter = ts && ts[0] >= 1 && ts[0] <= 12 && [2, 4, 8, 16].includes(ts[1]) ? { num: ts[0], den: ts[1] } : { num: 4, den: 4 };
+  const ppq = midi.header.ppq || 480;
+  const beatAt = (seconds) => midi.header.secondsToTicks(seconds) / ppq;
+  return { name: (midi.name || '').trim(), bpm, tracks, suggested: suggestMelodyTrack(tracks), meter, beatAt };
 }
 
 /**

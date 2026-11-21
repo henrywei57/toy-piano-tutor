@@ -1,7 +1,9 @@
 // Saved songs in localStorage. Only the chosen melody is stored (not the
 // whole MIDI file), normalised to { midi, startTime, duration } in seconds.
 //
-// song = { id, name, source: 'midi'|'text', bpm, notes, createdAt, text?, origin? }
+// song = { id, name, source: 'midi'|'text', bpm, notes, createdAt, text?, origin?, meter? }
+// meter = { num, den, offset }: time signature, and how far (quarter notes) into
+// its bar the first note starts. Used to draw bar lines in the sheet music.
 
 import { normalizeNotes } from './melody.js';
 import { LIBRARY, isLibraryId } from './library.js';
@@ -60,7 +62,7 @@ export function getSong(id) {
 }
 
 /** Save a new song and make it the active one. */
-export function addSong({ name, source, bpm, notes, text, origin }) {
+export function addSong({ name, source, bpm, notes, text, origin, meter }) {
   const song = {
     id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
     name: String(name || '').trim().slice(0, 80) || 'Untitled song',
@@ -71,6 +73,7 @@ export function addSong({ name, source, bpm, notes, text, origin }) {
   };
   if (text != null) song.text = text;
   if (origin) song.origin = origin;
+  if (meter && meter.num > 0 && meter.den > 0) song.meter = { num: meter.num, den: meter.den, offset: meter.offset || 0 };
   if (!song.notes.length) throw new Error('This song has no notes.');
   write(SONGS_KEY, [...listSongs(), song]);
   write(ACTIVE_KEY, song.id);

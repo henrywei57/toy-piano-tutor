@@ -3,6 +3,7 @@
 
 import { parseNotation } from './notation.js';
 import { normalizeNotes } from './melody.js';
+import { meterFromText, parseMeter } from './sheet.js';
 
 const SOURCES = [
   {
@@ -49,6 +50,7 @@ const SOURCES = [
   },
   {
     id: 'lib-row-your-boat',
+    meter: '6/8',
     name: 'Row, Row, Row Your Boat',
     bpm: 120,
     text: 'C4. C4. | C4 D4/8 E4. | E4 D4/8 E4 F4/8 | G4/2. | '
@@ -69,6 +71,7 @@ const SOURCES = [
   },
   {
     id: 'lib-happy-birthday',
+    meter: '3/4',
     name: 'Happy Birthday',
     bpm: 100,
     text: 'G4/8. G4/16 | A4 G4 C5 | B4/2 G4/8. G4/16 | A4 G4 D5 | C5/2 G4/8. G4/16 | '
@@ -76,6 +79,7 @@ const SOURCES = [
   },
   {
     id: 'lib-fur-elise',
+    meter: '3/8',
     name: 'Für Elise, theme (Beethoven)',
     bpm: 70,
     text: 'E5/16 D#5/16 | E5/16 D#5/16 E5/16 B4/16 D5/16 C5/16 | A4/8 R/16 C4/16 E4/16 A4/16 | B4/8 R/16 E4/16 G#4/16 B4/16 | '
@@ -87,7 +91,8 @@ const SOURCES = [
 export const LIBRARY = SOURCES.map((s) => {
   const { notes, errors } = parseNotation(s.text, { bpm: s.bpm });
   if (errors.length) throw new Error(`Built-in song “${s.name}” has a typo: ${errors[0].token}`);
-  return { ...s, source: 'library', notes: normalizeNotes(notes), createdAt: 0 };
+  const meter = meterFromText(s.text, parseMeter(s.meter || '4/4'));
+  return { ...s, meter, source: 'library', notes: normalizeNotes(notes), createdAt: 0 };
 });
 
 export function isLibraryId(id) {
