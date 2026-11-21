@@ -1,6 +1,7 @@
-// "Add a song → YouTube link" and "→ From audio": play a YouTube video inside
-// the app and listen to it, record a browser tab or the microphone, or open an
-// audio file; then turn the sound into notes (Basic Pitch) and save them.
+// "Add a song → YouTube link" and "→ From audio": get a YouTube video's sound
+// through the YouTube helper or by playing it inside the app and listening,
+// record a browser tab or the microphone, or open an audio file; then turn the
+// sound into notes (Basic Pitch) and save them.
 // The audio itself stays in memory and is never saved; only the notes are.
 
 import { h, setChildren } from './dom.js';
@@ -12,6 +13,7 @@ import { melodyOnly, isPolyphonic, noteStats, formatRange, formatDuration } from
 import { estimateTempo } from '../song/tempo.js';
 import { parseYouTubeLink, songNameFromTitle, createListenGate } from '../song/youtube.js';
 import { loadYouTubeApi, createYouTubePlayer } from './youtubePlayer.js';
+import { findHelper, helperRemembered, downloadAudio } from '../song/youtubeHelper.js';
 
 const DETAILS = [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']];
 const TIP = 'Works best when one melody stands out: a piano version, a solo instrument, or singing. Full band recordings give rough results.';
@@ -27,8 +29,8 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
   const el = h('div', { class: 'stack' });
   const body = h('div', { class: 'stack' });
   const st = {
-    phase: 'idle',        // idle | starting | recording | decoding | converting | done | error
-    source: null,         // youtube | tab | mic | file
+    phase: 'idle',        // idle | starting | recording | downloading | decoding | converting | done | error
+    source: null,         // helper | youtube | tab | mic | file
     error: '',
     name: '',
     autoName: '',         // the name taken from the video's title
@@ -48,6 +50,8 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
     waiting: false,       // listening, but the video hasn't started yet
     paused: false,        // listening, but the video is paused
     useMic: false,        // listen to the video with the microphone
+    helper: 'unknown',    // the YouTube helper: unknown | checking | on | off
+    helperError: '',
   };
   let capture = null;
   let captureIsMic = false;
@@ -104,6 +108,7 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
     st.video = { id: link.id, start: link.start, title: '' };
     if (st.name === st.autoName) st.name = '';
     const video = st.video;
+    if (st.helper !== 'on' && st.helper !== 'checking' && !isPhone() && helperRemembered()) checkHelper(false);
     render();
     try {
       await loadYouTubeApi();
@@ -135,6 +140,66 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
     }
   }
 
+  /** Look for the YouTube helper; `asked` = the user pressed Use the helper. */
+  async function checkHelper(asked) {
+    st.helper = 'checking';
+    st.helperError = '';
+    render();
+    // The first time, the browser may ask to let the site reach this computer.
+    const found = await findHelper({ timeout: asked ? 60000 : 2500 });
+    st.helper = found && found.ytdlp ? 'on' : 'off';
+    if (!found && asked) st.helperError = 'The helper isn’t running on this computer. Start it (step 2), then press Use the helper again.';
+    if (found && !found.ytdlp) st.helperError = 'The helper is running but can’t find yt-dlp. Install it (step 1), then restart the helper.';
+    render();
+  }
+
+  /** Where in the video to start: where it was moved to, else the link's start time. */
+  function startPoint() {
+    const ready = player && player.ready && st.videoState === 'ready';
+    const dur = ready ? player.duration() : 0;
+    const now = ready ? player.time() : 0;
+    const okAt = (t) => t > 1 && (!dur || t < dur - 3);
+    return okAt(now) ? now : okAt(st.video.start) ? st.video.start : 0;
+  }
+
+  /** Get the video's sound through the YouTube helper: nothing to share or play. */
+  async function downloadVideo() {
+    const video = st.video;
+    if (!video) return;
+    const from = startPoint();
+    if (player && player.ready) player.pause();
+    Object.assign(st, { source: 'helper', from: 'YouTube', phase: 'downloading', error: '', trimmed: false });
+    render();
+    controller = new AbortController();
+    let got;
+    try {
+      got = await downloadAudio(video.id, { signal: controller.signal });
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      if (err.notRunning) st.helper = 'off';
+      return fail(err.message);
+    } finally {
+      controller = null;
+    }
+    if (st.phase !== 'downloading') return;
+    if (!video.title) video.title = got.title;
+    setAutoName(video.title);
+    st.phase = 'decoding';
+    render();
+    let samples;
+    try {
+      samples = await decodeAudio(got.data, SAMPLE_RATE);
+    } catch {
+      return fail('The downloaded sound couldn’t be read. Try listening while the video plays instead.');
+    }
+    if (st.phase !== 'decoding') return;
+    if (from > 0) samples = samples.subarray(Math.min(samples.length, Math.round(from * SAMPLE_RATE)));
+    st.phase = 'converting';
+    showProgress({ stage: 'preparing' });
+    render();
+    convert(samples);
+  }
+
   function setAutoName(title) {
     const name = songNameFromTitle(title);
     if (!name) return;
@@ -161,12 +226,8 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
     if (!st.video.title) st.video.title = player.title();
     if (!st.name) setAutoName(st.video.title);
     st.from = 'YouTube';
+    const from = startPoint();
     beginRecording(false); // opened when the video plays
-    // From where the video is (if moved there), else from the link's start time.
-    const dur = player.duration();
-    const now = player.time();
-    const okAt = (t) => t > 1 && (!dur || t < dur - 3);
-    const from = okAt(now) ? now : okAt(st.video.start) ? st.video.start : 0;
     player.seek(from);
     gate = createListenGate(from);
     st.waiting = true;
@@ -313,6 +374,7 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
   }
 
   function silentText() {
+    if (st.source === 'helper') return 'This video’s sound is silent from where it starts.';
     if (st.source === 'youtube' && !captureIsMic) {
       return 'The recording is silent. When you allow sharing, keep “Also share tab audio” on, and check that the video isn’t muted.';
     }
@@ -388,8 +450,10 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
         ),
       );
       return setChildren(body, parts);
+    } else if (st.phase === 'downloading') {
+      parts.push(h('p', { role: 'status' }, 'The YouTube helper is getting the video’s sound… (usually 5–20 seconds)'));
     } else if (st.phase === 'decoding') {
-      parts.push(h('p', null, 'Reading the audio file…'));
+      parts.push(h('p', null, st.source === 'helper' ? 'Reading the sound…' : 'Reading the audio file…'));
     } else if (st.phase === 'converting') {
       parts.push(h('div', { class: 'progress', 'aria-hidden': 'true' }, progressFill), progressText);
     }
@@ -433,7 +497,28 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
       return parts;
     }
     if (st.videoState === 'error') {
-      parts.push(h('div', { class: 'msg error' }, st.videoError), ...videoFallback(), searchButton());
+      parts.push(h('div', { class: 'msg error' }, st.videoError));
+      if (st.helper === 'on') {
+        parts.push(
+          h('p', { class: 'muted small' }, 'The YouTube helper can still get its sound.'),
+          h('div', { class: 'row-actions' }, h('button', { class: 'btn primary', onClick: downloadVideo }, 'Find the notes'), searchButton()),
+        );
+      } else {
+        parts.push(...videoFallback(), searchButton(), helperHint());
+      }
+      return parts;
+    }
+    if (st.helper === 'on') {
+      parts.push(
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn primary', onClick: downloadVideo }, 'Find the notes'),
+          searchButton(),
+        ),
+        h('p', { class: 'muted small' },
+          'The YouTube helper on this computer gets the video’s sound, so there’s nothing to share and no need to play the video. It takes about 10 seconds, then the notes are found. The first 5 minutes are used, from the start of the video, or from where you moved it to.'),
+        h('button', { class: 'link', type: 'button', onClick: listenToVideo }, 'Listen while it plays instead'),
+        h('p', { class: 'muted small' }, TIP + ' Only the notes are kept, never the sound.'),
+      );
       return parts;
     }
     const tab = canCaptureTab() && !st.useMic;
@@ -450,8 +535,29 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
         class: 'link', type: 'button', onClick: () => { st.useMic = true; render(); },
       }, 'Listen with the microphone instead'),
       h('p', { class: 'muted small' }, TIP + ' Only the notes are kept, never the sound.'),
+      helperHint(),
     );
     return parts;
+  }
+
+  /** How to skip sharing the tab: run the YouTube helper on this computer. */
+  function helperHint() {
+    if (isPhone()) return null;
+    const checking = st.helper === 'checking';
+    return h('details', { class: 'helper-hint', open: checking || Boolean(st.helperError) },
+      h('summary', null, 'Skip sharing the tab'),
+      h('p', { class: 'muted small' }, 'Run the YouTube helper on this computer, and the app gets the video’s sound itself: nothing to share, and no need to play the video.'),
+      h('ol', { class: 'steps small' },
+        h('li', null, 'Once: install yt-dlp with ', h('code', null, 'python -m pip install "yt-dlp[default]"')),
+        h('li', null, 'Start the helper: in the toy-piano-tutor folder, run ', h('code', null, 'npm run youtube-helper'),
+          ' (on Windows you can double-click ', h('code', null, 'tools\\youtube-helper.cmd'), '). Leave its window open.'),
+        h('li', null, 'Press Use the helper. If the browser asks to let this site use apps on this device, allow it.'),
+      ),
+      st.helperError && h('div', { class: 'msg error' }, st.helperError),
+      h('div', { class: 'row-actions' },
+        h('button', { class: 'btn small', disabled: checking, onClick: () => checkHelper(true) }, checking ? 'Looking for the helper…' : 'Use the helper'),
+      ),
+    );
   }
 
   function searchButton() {
@@ -594,11 +700,15 @@ export function createAudioImport({ save, navigate, youtube = false, onSearch })
     loadLink(text) { if (youtube) { linkInput.value = text; loadLink(text); } },
     focus() { if (youtube && !linkForm.hidden) linkInput.focus(); },
     destroy() {
-      if (st.phase === 'recording' || st.phase === 'starting' || st.phase === 'converting' || st.phase === 'decoding') cancel();
+      if (['recording', 'starting', 'downloading', 'converting', 'decoding'].includes(st.phase)) cancel();
       loadSeq++;
       if (player) { player.destroy(); player = null; }
     },
   };
+}
+
+function isPhone() {
+  return typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
 function rms(samples) {

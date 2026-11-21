@@ -19,6 +19,7 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
 | Songs from audio (a browser tab, the microphone, or an audio file) | ✅ done |
 | Chords: each piano plays one key at a time or several | ✅ done |
 | Songs from a YouTube link | ✅ done |
+| YouTube helper: download a video's sound, no tab sharing (computer only) | ✅ done |
 
 ## Using it
 
@@ -72,6 +73,13 @@ Every song is stored as a list of `{ midi, startTime, duration }` with times in 
 
 **Songs → Add a song → YouTube link:** paste a link to a video of the song and press **Find the notes**. Pasting the link into the song search box works too. Any YouTube link works: `youtube.com/watch?v=…`, `youtu.be/…` (from **Share → Copy link**), Shorts and YouTube Music. A start time in the link (`&t=1m30s`) is used.
 
+There are two ways the app gets the video's sound:
+
+- **With the YouTube helper** (a computer, see below): the helper downloads the sound. There's nothing to share and no need to play the video, and it takes about 10 seconds.
+- **Without it:** the app plays the video and listens to it, as described next.
+
+When it listens:
+
 1. The video plays inside the app, in YouTube's own player.
 2. **On a computer** (Chrome or Edge), the browser first asks to share this tab, so the app can hear the video. Keep **Also share tab audio** on and allow it.
    **On a phone**, the app listens with the microphone while the video plays out loud. Turn the volume up and keep the room quiet.
@@ -86,7 +94,25 @@ While listening, the app only keeps the sound while the video itself plays (`src
 
 Some videos can't play inside other apps (the owner turned that off, often for official music videos). For those, the app shows how to use YouTube's own page instead: open it there, choose **Record that tab**, then play it. That recording stops by itself a few seconds after the sound ends.
 
-The app doesn't download anything from YouTube. It has no server, YouTube doesn't let other websites fetch its audio, and the sites that rip it break YouTube's terms. The video plays normally, and the app listens the way you would by ear. The sound stays on your device and is never saved; only the notes are kept.
+When the app listens, the video plays normally and the app hears it the way you would by ear. Either way, the sound stays on your device and is never saved; only the notes are kept.
+
+#### The YouTube helper
+
+The web app can't download from YouTube by itself: it has no server, and YouTube doesn't let other websites fetch its audio. The helper is a small program you run on your own computer (`tools/youtube-helper.mjs`). It uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to download a video's audio track and hands it to the app. The app reads that file (usually M4A) directly, so there's no MP3 conversion step.
+
+1. Once: install yt-dlp: `python -m pip install "yt-dlp[default]"` (needs Python 3.10+).
+2. Start the helper: in this folder, run `npm run youtube-helper`. On Windows you can double-click `tools\youtube-helper.cmd` instead. Leave its window open while you use the app.
+3. In the app, open a YouTube link, then **Skip sharing the tab → Use the helper**. The browser may ask to let the site use apps and services on this device: allow it. From then on, the app looks for the helper by itself.
+
+Good to know:
+
+- It works in the browser on the same computer as the helper, not on a phone.
+- The first 5 minutes are used, from the start of the video or from where you moved it to. Videos over 20 minutes are refused.
+- Videos that can't play inside the app still work through the helper.
+- It only listens on `127.0.0.1:47621`, so other computers can't reach it. Only the app's own pages may use it (`https://henrywei57.github.io`, and `http://localhost` for development); for a fork, set `TPT_HELPER_ORIGINS=https://you.github.io`.
+- Each download goes to a temporary folder that is deleted as soon as the app has it.
+- If downloads start failing, YouTube has probably changed something. Update yt-dlp: `python -m pip install -U "yt-dlp[default]"`.
+- Downloading from YouTube is against YouTube's terms of service. The helper is meant for your own use, to learn songs you're listening to.
 
 ### Songs from audio
 
@@ -180,6 +206,7 @@ npm test           # unit tests (vitest)
 npm run build      # production build in dist/
 npm run preview    # serve the production build locally
 npm run icons      # regenerate the PNG icons in public/icons
+npm run youtube-helper  # the YouTube helper (see "The YouTube helper")
 ```
 
 The service worker (offline support and install) is only registered in production builds, so `npm run dev` never serves stale cached files.
@@ -218,7 +245,7 @@ src/
             ties, beams, chords, accidentals, clef choice), transcribe.js (audio -> notes with
             Basic Pitch), tempo.js (tempo from note starts), tf.js (the parts of TensorFlow.js
             Basic Pitch needs), youtube.js (read a YouTube link, song name from a video title,
-            when to listen)
+            when to listen), youtubeHelper.js (talks to the YouTube helper)
   mapping/  transpose.js (transposition search, note mapping, fit explanation),
             mappingStore.js (settings per piano + song)
   ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js, mapView.js,
@@ -231,5 +258,5 @@ src/
 public/     manifest.webmanifest, sw.js, icons/, models/basic-pitch/ (the note-finder
             model from @spotify/basic-pitch, Apache-2.0)
 tests/      vitest unit tests + synthetic signal generators
-tools/      make-icons.mjs
+tools/      make-icons.mjs, youtube-helper.mjs + youtube-helper.cmd (the YouTube helper)
 ```
