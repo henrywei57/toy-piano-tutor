@@ -13,7 +13,7 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
 | 1. Profiles + calibration | ✅ done |
 | 2. Song import (MIDI, typed notes) | ✅ done |
 | 3. Song-to-piano mapping (transposition search) | ✅ done |
-| 4. Tutor mode (falling notes, listen-and-wait) | planned |
+| 4. Tutor mode (falling notes, listen-and-wait) | ✅ done |
 
 ## Using it
 
@@ -62,7 +62,23 @@ The **Map** screen fits the active song onto the active piano's *measured* keys 
   Substituted notes are highlighted in the note list.
 - The verdict is plain about bad fits. It says when the melody spans more than your keyboard, which notes are above or below it, and which notes have no key at all (e.g. black keys a white-key piano lacks). It also flags keys still marked as possible octave errors.
 
-Settings are remembered per piano and song, and the tutor will use them.
+Settings are remembered per piano and song, and the tutor uses them.
+
+### Playing (tutor)
+
+The **Play** screen draws *your* keys along the bottom, each labelled with its number and the note it really plays. The song's notes fall down onto them. The number on each falling note is the key to press. Colours match the Map screen: pink is on a key, amber is moved an octave, red is the nearest key.
+
+- **Play / Pause** (or the space bar) and **Restart**.
+- **Tempo** from 25% to 150%. The label shows the resulting BPM.
+- **Metronome:** a click on every beat, including the count-in.
+- **Hear song:** plays each note through the speaker *at the frequency your key actually has*, so it sounds like your piano, detuning included.
+- **Listen & wait:** uses the microphone.
+  - The song stops at each note until you play it, and moves on only when it hears the **right key**. The key is matched to the nearest measured key, and an octave error in detection is tolerated.
+  - A wrong key flashes red ("That was key 7, play key 5"). A right one flashes green.
+  - At the end you get an **accuracy score**: right keys ÷ all keys played.
+  - Sound and metronome are switched off in this mode so the microphone only hears your piano.
+
+On a narrow phone screen with many keys, the keyboard zooms to the keys the song uses and says so. Turn the phone sideways to see them all.
 
 ### How pitch detection works
 
@@ -73,6 +89,8 @@ Settings are remembered per piano and song, and the tutor will use them.
 3. **Analysis** (`analyze.js`) finds the loudest point (the hammer click) and steps back to where the attack starts. It **skips the first 30 ms** to avoid the broadband click, then runs **YIN** (`yin.js`) on overlapping frames for as long as the note rings. Noisy frames are dropped, and the result is the **median** of the rest.
 
 On synthetic test signals (glockenspiel-style bars with 2.76×/5.4× partials, toy-piano rods with 6.27×/17.55× partials, and a click up to 3× louder than the note), the estimate lands within 1 cent.
+
+In the tutor, only the key matters, not an exact pitch. So each note is recorded for at most 0.2 s, and YIN only searches the piano's own range. That keeps the response quick.
 
 ## Development
 
@@ -113,13 +131,16 @@ One-time setup for a fork: **Settings → Pages → Build and deployment → Sou
 
 ```
 src/
-  audio/    mic.js (capture), yin.js, onset.js, analyze.js, strikeListener.js, notes.js
+  audio/    mic.js (capture), yin.js, onset.js, analyze.js, strikeListener.js, notes.js,
+            synth.js (playback tones + metronome click)
   profile/  profile.js (model, octave-error flags), store.js (localStorage, export/import)
   song/     notation.js (typed notes), midi.js (@tonejs/midi import), melody.js (melody only,
             polyphony check, stats), library.js (built-in songs), songStore.js (saved songs)
   mapping/  transpose.js (transposition search, note mapping, fit explanation),
             mappingStore.js (settings per piano + song)
-  ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js, mapView.js
+  ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js, mapView.js,
+            tutorView.js (Play screen), tutorCanvas.js (falling notes + keys),
+            tutorEngine.js (song clock, listen-and-wait, scoring; no DOM)
   main.js   hash router + service worker registration
 public/     manifest.webmanifest, sw.js, icons/
 tests/      vitest unit tests + synthetic signal generators

@@ -5,10 +5,28 @@ import { OnsetDetector } from './onset.js';
 import { analyzeStrike } from './analyze.js';
 
 const PREROLL_MS = 60;
-const MIN_MS = 250;
-const MAX_MS = 900;
-const QUIET_MS = 100;
-const COOLDOWN_MS = 300;
+
+// Calibration wants an accurate pitch (long capture); the tutor only needs to
+// know which key was hit, quickly (short capture).
+export const CALIBRATION_TIMING = { minMs: 250, maxMs: 900, quietMs: 100, cooldownMs: 300 };
+export const TUTOR_TIMING = { minMs: 120, maxMs: 200, quietMs: 60, cooldownMs: 60 };
+
+/**
+ * listenForStrikes() options for the tutor: short captures, and a pitch search
+ * limited to the piano's own range (fewer octave errors, faster YIN).
+ * @param {number[]} keyFreqs measured key frequencies (Hz)
+ */
+export function tutorListenOptions(keyFreqs) {
+  return {
+    ...TUTOR_TIMING,
+    analyze: {
+      maxMs: 140,
+      minFrames: 2,
+      minFreq: Math.max(60, Math.min(...keyFreqs) * 0.6),
+      maxFreq: Math.min(5000, Math.max(...keyFreqs) * 1.7),
+    },
+  };
+}
 
 /**
  * @param {{sampleRate:number, subscribe:Function}} mic
@@ -16,9 +34,13 @@ const COOLDOWN_MS = 300;
  * @param {(state:'waiting'|'hearing'|'analyzing'|'cooldown')=>void} [handlers.onState]
  * @param {(levelDb:number, floorDb:number)=>void} [handlers.onLevel]
  * @param {(result:object)=>void} handlers.onResult   analyzeStrike() result
+ * @param {object} [opts]  timing ({minMs, maxMs, quietMs, cooldownMs}) and
+ *                         opts.analyze, passed to analyzeStrike()
  * @returns {{stop:()=>void, pause:()=>void, resume:()=>void}}
  */
-export function listenForStrikes(mic, handlers) {
+export function listenForStrikes(mic, handlers, opts = {}) {
+  const { minMs: MIN_MS, maxMs: MAX_MS, quietMs: QUIET_MS, cooldownMs: COOLDOWN_MS } = { ...CALIBRATION_TIMING, ...opts };
+  const analyzeOpts = opts.analyze || {};
   const sr = mic.sampleRate;
   const detector = new OnsetDetector(sr);
   const preroll = new Float32Array(Math.round((PREROLL_MS / 1000) * sr));
@@ -62,7 +84,7 @@ export function listenForStrikes(mic, handlers) {
     setState('analyzing');
     // Let the UI paint "analyzing" before the (synchronous) YIN work.
     setTimeout(() => {
-      const result = analyzeStrike(take, sr);
+      const result = analyzeStrike(take, sr, analyzeOpts);
       cooldownUntil = clock + cooldownLen;
       setState(paused ? 'waiting' : 'cooldown');
       handlers.onResult(result);

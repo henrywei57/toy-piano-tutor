@@ -4,6 +4,7 @@ import { profilesView } from './ui/profilesView.js';
 import { calibrateView } from './ui/calibrateView.js';
 import { songView } from './ui/songView.js';
 import { mapView } from './ui/mapView.js';
+import { tutorView } from './ui/tutorView.js';
 import { getActiveId, onProfilesChange } from './profile/store.js';
 
 const app = document.getElementById('app');
@@ -15,6 +16,7 @@ const routes = [
   { pattern: /^#\/calibrate\/([\w-]+)$/, view: calibrateView, tab: 'calibrate', keys: ['id'] },
   { pattern: /^#\/song$/, view: songView, tab: 'song' },
   { pattern: /^#\/map$/, view: mapView, tab: 'map' },
+  { pattern: /^#\/play$/, view: tutorView, tab: 'play' },
 ];
 
 let cleanup = null;
@@ -51,6 +53,7 @@ function renderTabs(activeTab = currentTab) {
     { id: 'calibrate', label: 'Calibrate', href: '#/calibrate', disabled: !hasActive },
     { id: 'song', label: 'Songs', href: '#/song' },
     { id: 'map', label: 'Map', href: '#/map' },
+    { id: 'play', label: 'Play', href: '#/play' },
   ];
   tabs.replaceChildren(...items.map((t) => h('a', {
     class: 'tab' + (t.id === activeTab ? ' on' : '') + (t.disabled ? ' disabled' : ''),
