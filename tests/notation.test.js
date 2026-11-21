@@ -63,3 +63,30 @@ describe('parseNotation', () => {
     expect(parseNotation('   ')).toEqual({ notes: [], errors: [], beats: 0 });
   });
 });
+
+describe('built-in songs', () => {
+  it('all parse cleanly into playable melodies', async () => {
+    const { LIBRARY } = await import('../src/song/library.js');
+    expect(LIBRARY.length).toBeGreaterThanOrEqual(10);
+    const ids = new Set();
+    for (const s of LIBRARY) {
+      expect(s.id.startsWith('lib-')).toBe(true);
+      expect(ids.has(s.id)).toBe(false);
+      ids.add(s.id);
+      expect(s.notes.length).toBeGreaterThan(8);
+      expect(s.notes[0].startTime).toBe(0);
+      // one note at a time
+      for (let i = 1; i < s.notes.length; i++) {
+        expect(s.notes[i].startTime).toBeGreaterThanOrEqual(s.notes[i - 1].startTime + s.notes[i - 1].duration - 1e-6);
+      }
+    }
+  });
+
+  it('keeps whole bars in songs written in 4/4', async () => {
+    const { LIBRARY } = await import('../src/song/library.js');
+    for (const id of ['lib-twinkle', 'lib-mary-lamb', 'lib-ode-to-joy', 'lib-jingle-bells', 'lib-au-clair', 'lib-yankee-doodle']) {
+      const s = LIBRARY.find((x) => x.id === id);
+      expect(parseNotation(s.text).beats % 4, s.name).toBe(0);
+    }
+  });
+});

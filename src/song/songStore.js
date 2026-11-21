@@ -4,6 +4,7 @@
 // song = { id, name, source: 'midi'|'text', bpm, notes, createdAt, text?, origin? }
 
 import { normalizeNotes } from './melody.js';
+import { LIBRARY, isLibraryId } from './library.js';
 
 const SONGS_KEY = 'tpt.v1.songs';
 const ACTIVE_KEY = 'tpt.v1.activeSong';
@@ -47,7 +48,14 @@ export function listSongs() {
   return Array.isArray(list) ? list.filter((s) => s && s.id && Array.isArray(s.notes)) : [];
 }
 
+/** Built-in songs (always available, can't be deleted). */
+export function listLibrary() {
+  return LIBRARY;
+}
+
+/** A saved song or a built-in one. */
 export function getSong(id) {
+  if (isLibraryId(id)) return LIBRARY.find((s) => s.id === id) || null;
   return listSongs().find((s) => s.id === id) || null;
 }
 

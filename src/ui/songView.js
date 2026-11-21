@@ -1,10 +1,12 @@
 // Songs screen: saved songs, plus "Add a song" from a MIDI file or typed notes.
 
-import { h, toast } from './dom.js';
+import { h, toast, setChildren } from './dom.js';
 import { parseMidi } from '../song/midi.js';
 import { parseNotation } from '../song/notation.js';
 import { melodyOnly, noteStats, formatRange, formatDuration } from '../song/melody.js';
 import * as songs from '../song/songStore.js';
+import { getActiveProfile } from '../profile/store.js';
+import { keysFromProfile, searchTranspositions } from '../mapping/transpose.js';
 
 const EXAMPLE = 'C4 C4 G4 G4 A4 A4 G4/2 | F4 F4 E4 E4 D4 D4 C4/2';
 
@@ -27,31 +29,52 @@ export function songView(root) {
   const listEl = h('div');
   const addEl = h('div', { class: 'card stack' });
 
-  // ---- saved songs --------------------------------------------------------
+  // ---- song lists ---------------------------------------------------------
   function renderList() {
-    const all = songs.listSongs();
+    const mine = songs.listSongs();
     const activeId = songs.getActiveSongId();
+    const profile = getActiveProfile();
+    const keys = profile ? keysFromProfile(profile) : [];
+
+    // "fits 93%" for the active piano, at its best transposition.
+    const fitText = (s) => {
+      if (!keys.length) return '';
+      const pct = Math.round(searchTranspositions(s.notes, keys).best.fraction * 100);
+      return ` · fits your piano ${pct}%`;
+    };
+
+    const row = (s, deletable) => {
+      const st = noteStats(s.notes);
+      const isActive = s.id === activeId;
+      const kind = s.source === 'midi' ? ' · MIDI' : s.source === 'text' ? ' · typed' : '';
+      return h('li', { class: 'song-row' + (isActive ? ' active' : '') },
+        h('div', { class: 'song-info' },
+          h('div', { class: 'song-name' }, s.name, isActive && h('span', { class: 'badge' }, 'Active')),
+          h('div', { class: 'muted small' },
+            `${st.count} notes · ${formatRange(st)} · ${formatDuration(st.seconds)}${kind}${fitText(s)}`),
+        ),
+        h('div', { class: 'row-actions' },
+          !isActive && h('button', { class: 'btn small', onClick: () => songs.setActiveSongId(s.id) }, 'Use'),
+          deletable && h('button', {
+            class: 'btn small danger',
+            onClick: () => { if (confirm(`Delete “${s.name}”?`)) songs.deleteSong(s.id); },
+          }, 'Delete'),
+        ),
+      );
+    };
+
     listEl.replaceChildren(
-      all.length
-        ? h('ul', { class: 'song-list' }, all.map((s) => {
-            const st = noteStats(s.notes);
-            const isActive = s.id === activeId;
-            return h('li', { class: 'card song-card' + (isActive ? ' active' : '') },
-              h('div', { class: 'song-info' },
-                h('div', { class: 'profile-name' }, s.name, isActive && h('span', { class: 'badge' }, 'Active')),
-                h('div', { class: 'muted small' },
-                  `${st.count} notes · ${formatRange(st)} · ${formatDuration(st.seconds)} · ${s.source === 'midi' ? 'MIDI' : 'typed'}`),
-              ),
-              h('div', { class: 'row-actions' },
-                !isActive && h('button', { class: 'btn small', onClick: () => songs.setActiveSongId(s.id) }, 'Use'),
-                h('button', {
-                  class: 'btn small danger',
-                  onClick: () => { if (confirm(`Delete “${s.name}”?`)) songs.deleteSong(s.id); },
-                }, 'Delete'),
-              ),
-            );
-          }))
-        : h('p', { class: 'muted' }, 'No songs yet. Add one below from a MIDI file or by typing the notes.'),
+      h('div', { class: 'stack' },
+        mine.length > 0 && h('div', { class: 'card stack' },
+          h('h2', null, 'Your songs'),
+          h('ul', { class: 'song-list' }, mine.map((s) => row(s, true))),
+        ),
+        h('div', { class: 'card stack' },
+          h('h2', null, 'Built-in songs'),
+          !keys.length && h('p', { class: 'muted small' }, 'Calibrate a piano to see how well each song fits it.'),
+          h('ul', { class: 'song-list' }, songs.listLibrary().map((s) => row(s, false))),
+        ),
+      ),
     );
   }
 
@@ -211,7 +234,7 @@ export function songView(root) {
           : h('div', { class: 'summary' }, h('strong', null, `${st.count} notes`), ` · ${formatRange(st)} · ${formatDuration(st.seconds)}`),
       ];
       if (!bpmOk) parts.push(h('div', { class: 'msg error' }, 'Tempo must be between 20 and 300 BPM.'));
-      preview.replaceChildren(...parts);
+      setChildren(preview, parts);
     }
 
     function saveTyped() {

@@ -12,7 +12,7 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
 | --- | --- |
 | 1. Profiles + calibration | ✅ done |
 | 2. Song import (MIDI, typed notes) | ✅ done |
-| 3. Song-to-piano mapping (transposition search) | planned |
+| 3. Song-to-piano mapping (transposition search) | ✅ done |
 | 4. Tutor mode (falling notes, listen-and-wait) | planned |
 
 ## Using it
@@ -27,7 +27,9 @@ Runs entirely in the browser: no backend, no account. Profiles and songs are kep
 
 ### Adding songs
 
-Open **Songs → Add a song**. The song you save becomes the *active* song.
+**Built-in songs:** the Songs screen comes with public-domain melodies, from very easy (Hot Cross Buns uses 3 notes) to harder ones (Für Elise needs sharps). Tap **Use** to make one the active song. Once a piano is calibrated, each song shows how well it fits that piano.
+
+To add your own, open **Songs → Add a song**. The song you save becomes the *active* song.
 
 - **MIDI file:** choose a `.mid` file and pick the track that holds the melody. The app suggests one (the highest-pitched track with a fair number of notes), and drum tracks can't be picked. Each track shows its note count and range. If a track has chords, **Melody only** keeps just the highest note at each moment. Only the chosen melody is saved, not the whole file.
 - **Type notes:** one note per word, e.g. `C4 D4 E4 C4/2 G4`.
@@ -44,6 +46,23 @@ Open **Songs → Add a song**. The song you save becomes the *active* song.
   Set the tempo in BPM. Mistakes are listed with their position (e.g. *Note 16 "H4": Not a note name*).
 
 Every song is stored as a list of `{ midi, startTime, duration }` with times in seconds, starting at 0.
+
+### Fitting a song to your piano
+
+The **Map** screen fits the active song onto the active piano's *measured* keys (`src/mapping/transpose.js`):
+
+- It tries every transposition from −12 to +12 semitones in **half-semitone** steps. Half steps let a piano tuned between standard notes still fit.
+- Each transposition is scored by how many song notes land within the **tolerance** (default ±50 cents, adjustable) of a real key. Ties go to the smaller pitch error, then the smaller shift.
+- It shows **"X% of notes playable at transposition Y"**. Pick any other transposition from the list (each shows its %), or go back to the best.
+- **Notes without a matching key** can be:
+  - **Octave-fold:** moved by whole octaves onto a key, or the nearest key if that note isn't on the piano in any octave.
+  - **Nearest key**
+  - **Skip**
+
+  Substituted notes are highlighted in the note list.
+- The verdict is plain about bad fits. It says when the melody spans more than your keyboard, which notes are above or below it, and which notes have no key at all (e.g. black keys a white-key piano lacks). It also flags keys still marked as possible octave errors.
+
+Settings are remembered per piano and song, and the tutor will use them.
 
 ### How pitch detection works
 
@@ -97,8 +116,10 @@ src/
   audio/    mic.js (capture), yin.js, onset.js, analyze.js, strikeListener.js, notes.js
   profile/  profile.js (model, octave-error flags), store.js (localStorage, export/import)
   song/     notation.js (typed notes), midi.js (@tonejs/midi import), melody.js (melody only,
-            polyphony check, stats), songStore.js (saved songs)
-  ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js
+            polyphony check, stats), library.js (built-in songs), songStore.js (saved songs)
+  mapping/  transpose.js (transposition search, note mapping, fit explanation),
+            mappingStore.js (settings per piano + song)
+  ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js, mapView.js
   main.js   hash router + service worker registration
 public/     manifest.webmanifest, sw.js, icons/
 tests/      vitest unit tests + synthetic signal generators
