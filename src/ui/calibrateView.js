@@ -288,7 +288,8 @@ export function calibrateView(root, { params, navigate }) {
       placeholder: '523.4  or  C5  or  C5+15',
       'aria-label': `Frequency or note for key ${i + 1}`,
       autocomplete: 'off',
-      spellcheck: false,
+      spellcheck: 'false',
+      autocapitalize: 'off',
     });
     function save(e) {
       e.preventDefault();

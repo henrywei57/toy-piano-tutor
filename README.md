@@ -4,14 +4,14 @@ Learn songs on a cheap toy piano: one with any number of keys (1–40), maybe ou
 
 **Live app:** https://henrywei57.github.io/toy-piano-tutor/ (install it from the browser menu: *Add to Home screen* / *Install app*)
 
-Runs entirely in the browser: no backend, no account. Data is kept in your browser's localStorage, and you can export or import profiles as JSON.
+Runs entirely in the browser: no backend, no account. Profiles and songs are kept in your browser's localStorage, and you can export or import profiles as JSON.
 
 ## Status
 
 | Feature | State |
 | --- | --- |
 | 1. Profiles + calibration | ✅ done |
-| 2. Song import (MIDI, typed notes) | planned |
+| 2. Song import (MIDI, typed notes) | ✅ done |
 | 3. Song-to-piano mapping (transposition search) | planned |
 | 4. Tutor mode (falling notes, listen-and-wait) | planned |
 
@@ -24,6 +24,26 @@ Runs entirely in the browser: no backend, no account. Data is kept in your brows
    - **Edit** lets you type a frequency (`523.4`) or a note (`C5`, `F#4`, `Bb5-20`) yourself.
    - **Skip** marks a broken or missing key so it's never used.
 4. **Export** a profile to back it up or move it to another device, and **Import** it there.
+
+### Adding songs
+
+Open **Songs → Add a song**. The song you save becomes the *active* song.
+
+- **MIDI file:** choose a `.mid` file and pick the track that holds the melody. The app suggests one (the highest-pitched track with a fair number of notes), and drum tracks can't be picked. Each track shows its note count and range. If a track has chords, **Melody only** keeps just the highest note at each moment. Only the chosen melody is saved, not the whole file.
+- **Type notes:** one note per word, e.g. `C4 D4 E4 C4/2 G4`.
+
+  | Write | Means |
+  | --- | --- |
+  | `C4` | quarter note (the default) |
+  | `C4/2`, `C4/1`, `C4/8`, `C4/16` | half, whole, eighth, sixteenth |
+  | `C4/4.` | dotted (1.5× as long) |
+  | `C#4`, `Db4`, `bb3` | sharps and flats; lowercase is fine |
+  | `R`, `R/2` | rest |
+  | `\|` `,` | ignored, so bar lines can be written in |
+
+  Set the tempo in BPM. Mistakes are listed with their position (e.g. *Note 16 "H4": Not a note name*).
+
+Every song is stored as a list of `{ midi, startTime, duration }` with times in seconds, starting at 0.
 
 ### How pitch detection works
 
@@ -76,7 +96,9 @@ One-time setup for a fork: **Settings → Pages → Build and deployment → Sou
 src/
   audio/    mic.js (capture), yin.js, onset.js, analyze.js, strikeListener.js, notes.js
   profile/  profile.js (model, octave-error flags), store.js (localStorage, export/import)
-  ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js
+  song/     notation.js (typed notes), midi.js (@tonejs/midi import), melody.js (melody only,
+            polyphony check, stats), songStore.js (saved songs)
+  ui/       dom.js, levelMeter.js, profilesView.js, calibrateView.js, songView.js
   main.js   hash router + service worker registration
 public/     manifest.webmanifest, sw.js, icons/
 tests/      vitest unit tests + synthetic signal generators
