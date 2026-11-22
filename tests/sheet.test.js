@@ -56,6 +56,14 @@ describe('meterFromText', () => {
     expect(m['lib-fur-elise']).toEqual({ num: 3, den: 8, offset: 1 });
     expect(m['lib-row-your-boat']).toEqual({ num: 6, den: 8, offset: 0 });
     expect(m['lib-twinkle']).toEqual({ num: 4, den: 4, offset: 0 });
+    expect(m['lib-we-wish-you']).toEqual({ num: 3, den: 4, offset: 2 });
+    expect(m['lib-good-king-wenceslas']).toEqual({ num: 4, den: 4, offset: 0 });
+    expect(m['lib-silent-night']).toEqual({ num: 6, den: 8, offset: 0 });
+    expect(m['lib-away-in-a-manger']).toEqual({ num: 3, den: 4, offset: 2 });
+    expect(m['lib-o-christmas-tree']).toEqual({ num: 3, den: 4, offset: 2 });
+    expect(m['lib-first-noel']).toEqual({ num: 3, den: 4, offset: 2 });
+    expect(m['lib-o-come-all-ye-faithful']).toEqual({ num: 4, den: 4, offset: 3 });
+    expect(m['lib-joy-to-the-world']).toEqual({ num: 2, den: 4, offset: 0 });
   });
 });
 

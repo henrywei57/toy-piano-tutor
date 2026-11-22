@@ -89,4 +89,19 @@ describe('built-in songs', () => {
       expect(parseNotation(s.text).beats % 4, s.name).toBe(0);
     }
   });
+
+  it('keeps every bar of the carols full, with the pickup made up at the end', async () => {
+    const { LIBRARY } = await import('../src/song/library.js');
+    const carols = ['lib-we-wish-you', 'lib-good-king-wenceslas', 'lib-silent-night', 'lib-away-in-a-manger',
+      'lib-o-christmas-tree', 'lib-first-noel', 'lib-o-come-all-ye-faithful', 'lib-joy-to-the-world'];
+    for (const id of carols) {
+      const s = LIBRARY.find((x) => x.id === id);
+      expect(s, id).toBeTruthy();
+      const bar = (s.meter.num * 4) / s.meter.den;
+      const bars = s.text.split('|').map((b) => parseNotation(b).beats);
+      // a bar may hold a note that runs on into the next one
+      for (const b of bars.slice(1, -1)) expect(b % bar, `${s.name}: a bar of ${b} beats`).toBe(0);
+      expect((bars[0] + bars[bars.length - 1]) % bar, `${s.name}: pickup and last bar`).toBe(0);
+    }
+  });
 });

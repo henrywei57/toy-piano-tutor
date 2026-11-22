@@ -86,6 +86,78 @@ const SOURCES = [
       + 'C5/8 R/16 E4/16 E5/16 D#5/16 | E5/16 D#5/16 E5/16 B4/16 D5/16 C5/16 | A4/8 R/16 C4/16 E4/16 A4/16 | '
       + 'B4/8 R/16 E4/16 C5/16 B4/16 | A4/4',
   },
+
+  // Christmas carols (all public domain), moved into C major for white keys.
+  {
+    id: 'lib-we-wish-you',
+    meter: '3/4',
+    name: 'We Wish You a Merry Christmas',
+    bpm: 120,
+    text: 'G4 | C5 C5/8 D5/8 C5/8 B4/8 | A4 A4 A4 | D5 D5/8 E5/8 D5/8 C5/8 | B4 G4 G4 | '
+      + 'E5 E5/8 F5/8 E5/8 D5/8 | C5 A4 G4/8 G4/8 | A4 D5 B4 | C5/2',
+  },
+  {
+    id: 'lib-good-king-wenceslas',
+    name: 'Good King Wenceslas',
+    bpm: 100,
+    text: 'C5 C5 C5 D5 | C5 C5 G4/2 | A4 G4 A4 B4 | C5/2 C5/2 | C5 C5 C5 D5 | C5 C5 G4/2 | A4 G4 A4 B4 | C5/2 C5/2 | '
+      + 'G5 F5 E5 D5 | E5 D5 C5/2 | A4 G4 A4 B4 | C5/2 C5/2 | G4 G4 A4 B4 | C5 C5 D5/2 | G5 F5 E5 D5 | C5/2 F5/2 | C5/1',
+  },
+  {
+    id: 'lib-silent-night',
+    meter: '6/8',
+    name: 'Silent Night',
+    bpm: 80,
+    text: 'G4. A4/8 G4 | E4/2. | G4. A4/8 G4 | E4/2. | D5/2 D5 | B4/2. | C5/2 C5 | G4/2. | '
+      + 'A4/2 A4 | C5. B4/8 A4 | G4. A4/8 G4 | E4/2. | A4/2 A4 | C5. B4/8 A4 | G4. A4/8 G4 | E4/2. | '
+      + 'D5/2 D5 | F5. D5/8 B4 | C5/2. | E5/2. | C5. G4/8 E4 | G4. F4/8 D4 | C4/2.',
+  },
+  {
+    id: 'lib-away-in-a-manger',
+    meter: '3/4',
+    name: 'Away in a Manger',
+    bpm: 90,
+    text: 'G3 | C4 C4 D4/8 E4/8 | C4 C4 E4/8 F4/8 | G4 G4 A4 | F4/2 D4/8 E4/8 | F4 F4 G4 | E4 E4 C4/8 E4/8 | D4 A3 C4 | B3/2 G3 | '
+      + 'C4 C4 D4/8 E4/8 | C4 C4 E4/8 F4/8 | G4 G4 A4 | F4/2 D4/8 E4/8 | F4 F4 G4 | E4 E4 C4/8 E4/8 | D4 A3 B3 | C4/2',
+  },
+  {
+    id: 'lib-o-christmas-tree',
+    meter: '3/4',
+    name: 'O Christmas Tree',
+    bpm: 100,
+    text: 'G3 | C4/8. C4/16 C4 D4 | E4/8. E4/16 E4. E4/8 | D4/8 E4/8 F4 B3 | D4 C4 G3 | '
+      + 'C4/8. C4/16 C4 D4 | E4/8. E4/16 E4. E4/8 | D4/8 E4/8 F4 B3 | D4 C4 R/8 G4/8 | '
+      + 'G4/8 E4/8 A4. G4/8 | G4/8 F4/8 F4. F4/8 | F4/8 D4/8 G4. F4/8 | F4/8 E4/8 E4 G3 | '
+      + 'C4/8. C4/16 C4 D4 | E4/8. E4/16 E4. E4/8 | D4/8 E4/8 F4 B3 | D4 C4',
+  },
+  {
+    id: 'lib-first-noel',
+    meter: '3/4',
+    name: 'The First Noel',
+    bpm: 100,
+    text: 'E4/8 D4/8 | C4. D4/8 E4/8 F4/8 | G4/2 A4/8 B4/8 | C5 B4 A4 | G4/2 A4/8 B4/8 | C5 B4 A4 | G4 A4 B4 | C5 G4 F4 | E4/2 E4/8 D4/8 | '
+      + 'C4. D4/8 E4/8 F4/8 | G4/2 A4/8 B4/8 | C5 B4 A4 | G4/2 A4/8 B4/8 | C5 B4 A4 | G4 A4 B4 | C5 G4 F4 | E4/2 E4/8 D4/8 | '
+      + 'C4. D4/8 E4/8 F4/8 | G4/2 C5/8 B4/8 | A4/2 A4 | G4/2. | C5 B4 A4 | G4 A4 B4 | C5 G4 F4 | E4/2',
+  },
+  {
+    id: 'lib-o-come-all-ye-faithful',
+    name: 'O Come, All Ye Faithful',
+    bpm: 90,
+    text: 'C4 | C4/2 G3 C4 | D4/2 G3/2 | E4 D4 E4 F4 | E4/2 D4 C4 | C4/2 B3 A3 | B3 C4 D4 E4 | B3/2 A3. G3/8 | G3/2. R | '
+      + 'G4/2 F4 E4 | F4/2 E4/2 | D4 E4 C4 D4 | B3. A3/8 G3 C4 | C4 B3 C4 D4 | C4/2 G3 E4 | E4 D4 E4 F4 | E4/2 D4 E4 | '
+      + 'F4 E4 D4 C4 | B3/2 C4 F4 | E4/2 D4. C4/8 | C4/2.',
+  },
+  {
+    id: 'lib-joy-to-the-world',
+    meter: '2/4',
+    name: 'Joy to the World',
+    bpm: 100,
+    // "King" is held for 3½ beats; with no ties, a dotted half and a short breath.
+    text: 'C5 B4/8. A4/16 | G4. F4/8 | E4 D4 | C4. G4/8 | A4. A4/8 | B4. B4/8 | C5/2. R/8 C5/8 | '
+      + 'C5/8 B4/8 A4/8 G4/8 | G4/8. F4/16 E4/8 C5/8 | C5/8 B4/8 A4/8 G4/8 | G4/8. F4/16 E4/8 E4/8 | '
+      + 'E4/8 E4/8 E4/8 E4/16 F4/16 | G4. F4/16 E4/16 | D4/8 D4/8 D4/8 D4/16 E4/16 | F4. E4/16 D4/16 | '
+      + 'C4/8 C5 A4/8 | G4/8. F4/16 E4/8 F4/8 | E4 D4 | C4/2',
+  },
 ];
 
 export const LIBRARY = SOURCES.map((s) => {

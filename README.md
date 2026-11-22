@@ -46,7 +46,7 @@ Only your search words are sent to bitmidi.com (and to YouTube when you open its
 
 ### Adding songs
 
-**Built-in songs:** the Songs screen comes with public-domain melodies, from very easy (Hot Cross Buns uses 3 notes) to harder ones (Für Elise needs sharps). Tap **Use** to make one the active song. Once a piano is calibrated, each song shows how well it fits that piano.
+**Built-in songs:** the Songs screen comes with public-domain melodies, from very easy (Hot Cross Buns uses 3 notes) to harder ones (Für Elise needs sharps), plus Christmas carols: We Wish You a Merry Christmas, Good King Wenceslas, Silent Night, Away in a Manger, O Christmas Tree, The First Noel, O Come All Ye Faithful and Joy to the World, all moved into C major for the white keys. Tap **Use** to make one the active song. Once a piano is calibrated, each song shows how well it fits that piano.
 
 To add your own, open **Songs → Add a song**. The song you save becomes the *active* song.
 
